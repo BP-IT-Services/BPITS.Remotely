@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Set up SSH agent for submodules
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Derive version from commit date
+        run: |
+          VERSION=$(git show -s --format='%cd' --date='format:%Y.%m.%d.%H%M')
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Restore
+        run: dotnet restore Remotely.sln
+
+      - name: Run Server tests
+        run: dotnet test Tests/Server.Tests/Server.Tests.csproj --configuration Release --no-restore
+
+      - name: Run Shared tests
+        run: dotnet test Tests/Shared.Tests/Shared.Tests.csproj --configuration Release --no-restore
+
+      - name: Build Server
+        run: |
+          dotnet build Server/Server.csproj \
+            --runtime linux-x64 \
+            --configuration Release \
+            --self-contained \
+            --no-restore
+
+      - name: Publish Server
+        run: |
+          dotnet publish Server/Server.csproj \
+            --runtime linux-x64 \
+            --configuration Release \
+            --self-contained \
+            --output Server/bin/publish \
+            --no-build \
+            /p:Version=${{ env.VERSION }} \
+            /p:FileVersion=${{ env.VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Server/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ env.VERSION }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
