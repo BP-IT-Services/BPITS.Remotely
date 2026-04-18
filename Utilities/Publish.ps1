@@ -21,20 +21,27 @@ param (
     [string]$ArtifactSigningAccount = "",
     [Alias("ascp")]
     [string]$ArtifactSigningCertificateProfile = "",
-    [string]$CurrentVersion = ""
+    [string]$CurrentVersion = "",
+    [switch]$RequireSigning
 )
 
 
 
 $ErrorActionPreference = "Stop"
-$InstallerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
-$VsWhere = "$InstallerDir\vswhere.exe"
-$MSBuildPath = (&"$VsWhere" -latest -products * -find "\MSBuild\Current\Bin\MSBuild.exe").Trim()
-$Root = (Get-Item -Path $PSScriptRoot).Parent.FullName
 
 $SignAssemblies = ($ArtifactSigningEndpoint.Length -gt 0 -and
                    $ArtifactSigningAccount.Length -gt 0 -and
                    $ArtifactSigningCertificateProfile.Length -gt 0)
+
+if ($RequireSigning -and -not $SignAssemblies) {
+    Write-Error "Signing is required (-RequireSigning) but one or more signing parameters are missing: ArtifactSigningEndpoint, ArtifactSigningAccount, ArtifactSigningCertificateProfile."
+    exit 1
+}
+
+$InstallerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+$VsWhere = "$InstallerDir\vswhere.exe"
+$MSBuildPath = (&"$VsWhere" -latest -products * -find "\MSBuild\Current\Bin\MSBuild.exe").Trim()
+$Root = (Get-Item -Path $PSScriptRoot).Parent.FullName
 
 if (!$CurrentVersion) {
     Push-Location -Path $Root

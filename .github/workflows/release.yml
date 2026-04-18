@@ -53,6 +53,7 @@ jobs:
         run: |
           .\Publish.ps1 `
             -CurrentVersion $env:VERSION `
+            -RequireSigning `
             -ArtifactSigningEndpoint "${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}" `
             -ArtifactSigningAccount "${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}" `
             -ArtifactSigningCertificateProfile "${{ secrets.ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}"
