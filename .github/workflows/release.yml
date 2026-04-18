@@ -48,8 +48,7 @@ jobs:
           dotnet build Server/Server.csproj \
             --runtime linux-x64 \
             --configuration Release \
-            --self-contained \
-            --no-restore
+            --self-contained
 
       - name: Publish Server
         run: |
