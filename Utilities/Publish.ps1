@@ -15,8 +15,12 @@ param (
     [string]$OutDir = "",
     # RIDs are described here: https://docs.microsoft.com/en-us/dotnet/core/rid-catalog
     [string]$RID = "",
-    [string]$CertificatePath = "",
-    [string]$CertificatePassword = "",
+    [Alias("ase")]
+    [string]$ArtifactSigningEndpoint = "",
+    [Alias("asa")]
+    [string]$ArtifactSigningAccount = "",
+    [Alias("ascp")]
+    [string]$ArtifactSigningCertificateProfile = "",
     [string]$CurrentVersion = ""
 )
 
@@ -27,7 +31,10 @@ $InstallerDir = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
 $VsWhere = "$InstallerDir\vswhere.exe"
 $MSBuildPath = (&"$VsWhere" -latest -products * -find "\MSBuild\Current\Bin\MSBuild.exe").Trim()
 $Root = (Get-Item -Path $PSScriptRoot).Parent.FullName
-$SignAssemblies = $false
+
+$SignAssemblies = ($ArtifactSigningEndpoint.Length -gt 0 -and
+                   $ArtifactSigningAccount.Length -gt 0 -and
+                   $ArtifactSigningCertificateProfile.Length -gt 0)
 
 if (!$CurrentVersion) {
     Push-Location -Path $Root
@@ -38,12 +45,6 @@ if (!$CurrentVersion) {
     $CurrentVersion = $VersionDate.ToString("yyyy.MM.dd.HHmm")
 
     Pop-Location
-}
-
-if ($CertificatePath.Length -gt 0 -and 
-    (Test-Path -Path $CertificatePath) -eq $true -and 
-    $CertificatePassword.Length -gt 0) {
-    $SignAssemblies = $true
 }
 
 
@@ -124,16 +125,28 @@ dotnet publish /p:Version=$CurrentVersion /p:FileVersion=$CurrentVersion -p:Publ
 # Publish Windows GUI App (64-bit)
 dotnet publish /p:Version=$CurrentVersion /p:FileVersion=$CurrentVersion -p:PublishProfile=desktop-win-x64 --configuration Release "$Root\Desktop.Win"
 
-if ($SignAssemblies) {
-    &"$Root\Utilities\signtool.exe" sign /fd SHA256 /f "$CertificatePath" /p $CertificatePassword /t http://timestamp.digicert.com "$Root\Server\wwwroot\Content\Win-x64\Remotely_Desktop.exe"
-}
-
-
 # Publish Windows GUI App (32-bit)
 dotnet publish /p:Version=$CurrentVersion /p:FileVersion=$CurrentVersion -p:PublishProfile=desktop-win-x86 --configuration Release "$Root\Desktop.Win"
 
 if ($SignAssemblies) {
-    &"$Root\Utilities\signtool.exe" sign /fd SHA256 /f "$CertificatePath" /p $CertificatePassword /t http://timestamp.digicert.com "$Root\Server\wwwroot\Content\Win-x86\Remotely_Desktop.exe"
+    $TempSignDir = "$Root\Agent\bin\publish\signing-staging"
+    New-Item -Path $TempSignDir -ItemType Directory -Force | Out-Null
+
+    Copy-Item -Path "$Root\Server\wwwroot\Content\Win-x64\Remotely_Desktop.exe" -Destination "$TempSignDir\Remotely_Desktop_x64.exe" -Force
+    Copy-Item -Path "$Root\Server\wwwroot\Content\Win-x86\Remotely_Desktop.exe" -Destination "$TempSignDir\Remotely_Desktop_x86.exe" -Force
+
+    sign code artifact-signing `
+        -b "$TempSignDir" `
+        --artifact-signing-endpoint $ArtifactSigningEndpoint `
+        --artifact-signing-certificate-profile $ArtifactSigningCertificateProfile `
+        --artifact-signing-account $ArtifactSigningAccount `
+        *.exe `
+        -v Information
+
+    Copy-Item -Path "$TempSignDir\Remotely_Desktop_x64.exe" -Destination "$Root\Server\wwwroot\Content\Win-x64\Remotely_Desktop.exe" -Force
+    Copy-Item -Path "$TempSignDir\Remotely_Desktop_x86.exe" -Destination "$Root\Server\wwwroot\Content\Win-x86\Remotely_Desktop.exe" -Force
+
+    Remove-Item -Path $TempSignDir -Recurse -Force
 }
 
 # Compress Agents.
