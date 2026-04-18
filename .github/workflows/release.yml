@@ -4,9 +4,66 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
+  build-agents:
+    name: Build and Sign Agents
+    runs-on: windows-latest
+
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Set up SSH agent for submodules
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Derive version from commit date
+        shell: pwsh
+        run: |
+          $VersionString = git show -s --format=%ci
+          $VersionDate = [DateTimeOffset]::Parse($VersionString)
+          $CurrentVersion = $VersionDate.ToString("yyyy.MM.dd.HHmm")
+          echo "VERSION=$CurrentVersion" >> $env:GITHUB_ENV
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.x'
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install sign CLI
+        run: dotnet tool install --global sign
+
+      - name: Run Publish.ps1
+        shell: pwsh
+        working-directory: Utilities
+        run: |
+          .\Publish.ps1 `
+            -CurrentVersion $env:VERSION `
+            -ArtifactSigningEndpoint "${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}" `
+            -ArtifactSigningAccount "${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}" `
+            -ArtifactSigningCertificateProfile "${{ secrets.ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}"
+
+      - name: Upload agent content
+        uses: actions/upload-artifact@v4
+        with:
+          name: wwwroot-content
+          path: Server/wwwroot/Content/
+          retention-days: 1
+
+  build-server:
     name: Build and Push to ECR
     runs-on: ubuntu-latest
+    needs: build-agents
 
     env:
       DOTNET_NOLOGO: true
@@ -28,6 +85,12 @@ jobs:
         run: |
           VERSION=$(git show -s --format='%cd' --date='format:%Y.%m.%d.%H%M')
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Download agent content
+        uses: actions/download-artifact@v4
+        with:
+          name: wwwroot-content
+          path: Server/wwwroot/Content/
 
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
