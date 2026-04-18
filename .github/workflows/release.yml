@@ -41,7 +41,7 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Install sign CLI
-        run: dotnet tool install --global sign
+        run: dotnet tool install --global --prerelease sign
 
       - name: Run Publish.ps1
         shell: pwsh
