@@ -64,28 +64,14 @@ jobs:
         **\Shared.Tests.csproj
 
   - task: PowerShell@2
-    displayName: Create Code Signing Cert
-    env:
-      SigningCertBase64: $(CODE_SIGNING_CERT_BASE64)
-    inputs:
-      targetType: inline
-      script: |
-          if (!$env:SigningCertBase64) {
-            Write-Host "CODE_SIGNING_CERT_BASE64 variable is empty.  Skipping cert creation."
-            return
-          }
-          $CertBytes = [System.Convert]::FromBase64String($env:SigningCertBase64)
-          [System.IO.File]::WriteAllBytes("$(Build.SourcesDirectory)\Utilities\CodeSigningCert.pfx", $CertBytes)
-
-  - task: PowerShell@2
     displayName: Publish.ps1
     inputs:
       filePath: Utilities/Publish.ps1
-      arguments: -CertificatePath "$(Build.SourcesDirectory)\Utilities\CodeSigningCert.pfx" -CertificatePassword  "$(SIGNING_CERT_PASSWORD)" -CurrentVersion "$(CurrentVersion)"
+      arguments: -CurrentVersion "$(CurrentVersion)"
       failOnStderr: true
       workingDirectory: Utilities
 
-  # The MSBuild TypeScript task doesn't compiled the TS
+  # The MSBuild TypeScript task doesn't compile the TS
   # files without this build step before publishing.
   - task: DotNetCoreCLI@2
     displayName: Build Server

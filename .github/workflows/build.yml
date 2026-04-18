@@ -85,8 +85,6 @@ jobs:
     env:
       Solution_Name: Remotely.sln      
       Configuration: Release
-      PfxBase64: ${{ secrets.BASE64_ENCODED_PFX }}
-      PfxKey: ${{ secrets.PFX_KEY }}
       ServerUrl: ${{ github.event.inputs.serverUrl }}
 
     steps:
@@ -117,21 +115,6 @@ jobs:
     # Restore the application to populate the obj folder with RuntimeIdentifiers
     - name: Restore the application
       run: msbuild $env:Solution_Name /t:Restore /p:Configuration=$env:Configuration
-
-    # Decode the base 64 encoded pfx and save the Signing_Certificate
-    - name: Decode the pfx
-      run: |
-        if (!($env:PfxBase64)) {
-          echo "Skipping cert signing because Base64_Encoded_Pfx secret is missing."
-          return
-        }
-        
-        echo "Creating Pfx for signing assemblies."
-        
-        $pfx_cert_byte = [System.Convert]::FromBase64String($env:PfxBase64)
-        $certificatePath = Join-Path -Path $env:GITHUB_WORKSPACE -ChildPath GitHubActionsWorkflow.pfx
-        echo "Writing file to $certificatePath."
-        [IO.File]::WriteAllBytes($certificatePath, $pfx_cert_byte)
     
     # Store the assembly version in an environment variable
     - name: Set current version
@@ -157,7 +140,7 @@ jobs:
     - name: Run Publish script
       shell: powershell
       run: |
-        .\Utilities\Publish.ps1 -CertificatePath "$env:GITHUB_WORKSPACE\GitHubActionsWorkflow.pfx" -CertificatePassword $env:PfxKey -CurrentVersion $env:CurrentVersion -RID ${{ github.event.inputs.rid }} -OutDir "$env:GITHUB_WORKSPACE\publish"
+        .\Utilities\Publish.ps1 -CurrentVersion $env:CurrentVersion -RID ${{ github.event.inputs.rid }} -OutDir "$env:GITHUB_WORKSPACE\publish"
         
     # Upload build artifact to be deployed from Ubuntu runner
     - name: Upload build artifact
@@ -165,11 +148,3 @@ jobs:
       with:
         path: ./publish/
         name: Server
-    
-
-    # Remove the pfx
-    - name: Remove the pfx
-      run: |
-        if (Test-Path "$env:GITHUB_WORKSPACE\GitHubActionsWorkflow.pfx") {
-          Remove-Item -path "$env:GITHUB_WORKSPACE\GitHubActionsWorkflow.pfx"
-        }
