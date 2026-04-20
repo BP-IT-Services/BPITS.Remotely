@@ -1,3 +1,15 @@
+# BPITS Remotely
+[![CI](https://github.com/BP-IT-Services/BPITS.Remotely/actions/workflows/cicd.yml/badge.svg)](https://github.com/BP-IT-Services/BPITS.Remotely/actions/workflows/cicd.yml)
+[![Release](https://github.com/BP-IT-Services/BPITS.Remotely/actions/workflows/release.yml/badge.svg)](https://github.com/BP-IT-Services/BPITS.Remotely/actions/workflows/release.yml)
+
+This is a fork of [immense/Remotely](https://github.com/immense/Remotely), maintained by BP IT Services.
+
+## What's different
+
+- **Signed agent binaries** - Windows agent executables are signed via Azure Artifact Signing and embedded into the built container image, so devices receive signed binaries without any extra steps.
+
+---
+
 # Remotely
 
 A remote control and remote scripting solution, built with .NET, Blazor, and SignalR Core.
