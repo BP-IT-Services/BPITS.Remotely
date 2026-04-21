@@ -33,6 +33,8 @@ public class RemoteControlSession : IDisposable
     /// Whether to notify the user via system notification when a remote
     /// control session has started.
     /// </summary>
+    public bool IsElevated { get; set; }
+
     public bool NotifyUserOnStart { get; set; } = true;
 
     public string OrganizationId { get; set; } = string.Empty;

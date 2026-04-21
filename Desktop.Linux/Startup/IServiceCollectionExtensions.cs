@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Remotely.Desktop.Linux.Services;
 using Remotely.Desktop.UI.Services;
 using Remotely.Desktop.UI.Startup;
+using Remotely.Shared.Services;
 
 namespace Remotely.Desktop.Linux.Startup;
 
@@ -22,6 +23,7 @@ public static class IServiceCollectionExtensions
         services.AddRemoteControlUi();
 
         services.AddSingleton<IAppStartup, AppStartup>();
+        services.AddSingleton<IElevationDetector, ElevationDetectorLinux>();
         services.AddSingleton<ICursorIconWatcher, CursorIconWatcherLinux>();
         services.AddSingleton<IKeyboardMouseInput, KeyboardMouseInputLinux>();
         services.AddSingleton<IClipboardService, ClipboardService>();

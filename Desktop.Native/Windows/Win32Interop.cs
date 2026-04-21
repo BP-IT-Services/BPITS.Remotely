@@ -252,6 +252,72 @@ public class Win32Interop
         return (MessageBoxResult)MessageBox(owner, message, caption, (long)messageBoxType);
     }
 
+    public static bool RelaunchElevated(string username, string domain, string password, out PROCESS_INFORMATION procInfo)
+    {
+        procInfo = new PROCESS_INFORMATION();
+        nint hToken = nint.Zero;
+        nint hLinkedToken = nint.Zero;
+
+        try
+        {
+            const int LOGON32_LOGON_INTERACTIVE = 2;
+            const int LOGON32_PROVIDER_DEFAULT = 0;
+
+            if (!LogonUser(username, domain, password, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out hToken))
+            {
+                return false;
+            }
+
+            // Try to get the linked (fully elevated) token. This succeeds when UAC is
+            // enabled and the account has a split admin token. On failure (UAC off, or
+            // a standard-user account), fall back to the logon token as-is.
+            uint ptrSize = (uint)nint.Size;
+            var tokenInfoPtr = Marshal.AllocHGlobal((int)ptrSize);
+            try
+            {
+                if (GetTokenInformation(hToken, SECUR32.TOKEN_INFORMATION_CLASS.TokenLinkedToken, tokenInfoPtr, ptrSize, out _))
+                {
+                    hLinkedToken = Marshal.ReadIntPtr(tokenInfoPtr);
+                }
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(tokenInfoPtr);
+            }
+
+            var tokenToUse = hLinkedToken != nint.Zero ? hLinkedToken : hToken;
+
+            var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+            var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
+            var commandLine = $"\"{exePath}\" {args}";
+
+            var si = new STARTUPINFO();
+            si.cb = Marshal.SizeOf(si);
+            si.lpDesktop = @"winsta0\Default";
+
+            var sa = new SECURITY_ATTRIBUTES();
+            sa.Length = Marshal.SizeOf(sa);
+
+            return CreateProcessAsUser(
+                tokenToUse,
+                null,
+                commandLine,
+                ref sa,
+                ref sa,
+                false,
+                NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT,
+                nint.Zero,
+                null,
+                ref si,
+                out procInfo);
+        }
+        finally
+        {
+            if (hToken != nint.Zero) Kernel32.CloseHandle(hToken);
+            if (hLinkedToken != nint.Zero) Kernel32.CloseHandle(hLinkedToken);
+        }
+    }
+
     public static bool SwitchToInputDesktop()
     {
         try

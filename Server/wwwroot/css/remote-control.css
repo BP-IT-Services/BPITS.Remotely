@@ -400,6 +400,24 @@ button {
     }
 }
 
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay .modal-prompt {
+    position: relative;
+    top: unset;
+    left: unset;
+    transform: none;
+    min-width: 320px;
+}
+
 .modal-prompt {
     position: fixed;
     top: 50%;

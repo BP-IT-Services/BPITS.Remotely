@@ -84,6 +84,14 @@ export class ViewerHubConnection {
         await this.Connection.invoke("InvokeCtrlAltDel");
     }
 
+    async RequestElevation(username: string, domain: string, password: string) {
+        if (this.Connection?.state != HubConnectionState.Connected) {
+            return;
+        }
+
+        await this.Connection.invoke("RequestElevation", username, domain, password);
+    }
+
     async SendDtoToClient<T>(dto: T, type: DtoType): Promise<void> {
 
         if (this.Connection?.state != HubConnectionState.Connected) {
@@ -208,6 +216,14 @@ export class ViewerHubConnection {
 
         hubConnection.on("CursorChange", (cursor: CursorInfo) => {
             UI.UpdateCursor(cursor.ImageBytes, cursor.HotSpot.X, cursor.HotSpot.Y, cursor.CssOverride);
+        });
+
+        hubConnection.on("ReceiveElevationStatus", (isElevated: boolean) => {
+            UI.SetElevationStatus(isElevated);
+        });
+
+        hubConnection.on("ElevationFailed", (reason: string) => {
+            ShowToast(`Elevation failed: ${reason}`);
         });
 
         hubConnection.on("ShowMessage", (message: string) => {

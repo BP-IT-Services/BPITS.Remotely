@@ -57,6 +57,7 @@ export var WindowsSessionMenuButton = document.getElementById("windowsSessionMen
 export var MetricsButton = document.getElementById("metricsButton") as HTMLButtonElement;
 export var MetricsFrame = document.getElementById("metricsFrame") as HTMLDivElement;
 export var BetaPillPullDown = document.getElementById("betaPillPullDown") as HTMLDivElement;
+export var ElevateButton = document.getElementById("elevateButton") as HTMLButtonElement;
 
 export function CloseAllPopupMenus(exceptMenuId: string) {
     PopupMenus.forEach(x => {
@@ -126,6 +127,81 @@ export function ShowToast(message: string) {
     }, 5000);
 }
 
+
+export function SetElevationStatus(isElevated: boolean) {
+    if (ElevateButton) {
+        if (isElevated) {
+            ElevateButton.classList.add("d-none");
+        } else {
+            ElevateButton.classList.remove("d-none");
+        }
+    }
+}
+
+export function ShowElevationDialog(): Promise<{ username: string; domain: string; password: string } | null> {
+    return new Promise((resolve) => {
+        const overlay = document.createElement("div");
+        overlay.classList.add("modal-overlay");
+
+        const dialog = document.createElement("div");
+        dialog.classList.add("modal-prompt");
+
+        const title = document.createElement("h3");
+        title.innerText = "Elevate Remote Agent";
+        dialog.appendChild(title);
+
+        const note = document.createElement("p");
+        note.innerText = "Enter local administrator credentials to relaunch the remote agent with elevated privileges.";
+        dialog.appendChild(note);
+
+        const usernameInput = document.createElement("input");
+        usernameInput.type = "text";
+        usernameInput.placeholder = "Username";
+        usernameInput.autocomplete = "off";
+        dialog.appendChild(usernameInput);
+
+        const domainInput = document.createElement("input");
+        domainInput.type = "text";
+        domainInput.placeholder = "Domain (leave blank for local account)";
+        domainInput.autocomplete = "off";
+        dialog.appendChild(domainInput);
+
+        const passwordInput = document.createElement("input");
+        passwordInput.type = "password";
+        passwordInput.placeholder = "Password";
+        passwordInput.autocomplete = "off";
+        dialog.appendChild(passwordInput);
+
+        const buttons = document.createElement("div");
+        buttons.classList.add("buttons-footer");
+
+        const submitBtn = document.createElement("button");
+        submitBtn.innerText = "Elevate";
+        submitBtn.onclick = () => {
+            const username = usernameInput.value;
+            const domain = domainInput.value || ".";
+            const password = passwordInput.value;
+            passwordInput.value = "";
+            overlay.remove();
+            resolve({ username, domain, password });
+        };
+
+        const cancelBtn = document.createElement("button");
+        cancelBtn.innerText = "Cancel";
+        cancelBtn.onclick = () => {
+            passwordInput.value = "";
+            overlay.remove();
+            resolve(null);
+        };
+
+        buttons.appendChild(submitBtn);
+        buttons.appendChild(cancelBtn);
+        dialog.appendChild(buttons);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        usernameInput.focus();
+    });
+}
 
 export function ToggleConnectUI(shown: boolean) {
     if (shown) {

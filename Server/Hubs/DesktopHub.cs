@@ -194,6 +194,12 @@ public class DesktopHub : Hub<IDesktopHubClient>
         }
     }
 
+    public async Task ReportElevationStatus(bool isElevated)
+    {
+        SessionInfo.IsElevated = isElevated;
+        await _viewerHub.Clients.Clients(ViewerList).ReceiveElevationStatus(isElevated);
+    }
+
     public Task ReceiveAttendedSessionInfo(string machineName)
     {
         SessionInfo.DesktopConnectionId = Context.ConnectionId;
