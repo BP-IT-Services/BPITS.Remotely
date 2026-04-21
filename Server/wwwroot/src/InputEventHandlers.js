@@ -111,6 +111,7 @@ export function ApplyInputHandlers() {
             return;
         }
         await ViewerApp.ViewerHubConnection.RequestElevation(creds.username, creds.domain, creds.password);
+        ShowToast("Credentials submitted. Waiting for the agent to relaunch...");
     });
     DisconnectButton.addEventListener("click", (ev) => {
         ConnectButton.removeAttribute("disabled");
