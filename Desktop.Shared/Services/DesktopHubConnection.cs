@@ -9,6 +9,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Remotely.Shared.Primitives;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using Remotely.Desktop.Native.Windows;
 
 namespace Remotely.Desktop.Shared.Services;
@@ -50,7 +53,10 @@ public interface IDesktopHubConnection
 
 public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
 {
+    private record ElevationCredentials(string Username, string Domain, string Password);
+
     private readonly IAppState _appState;
+    private RSA? _elevationRsaKey;
 
     private readonly ILogger<DesktopHubConnection> _logger;
     private readonly IDtoMessageHandler _messageHandler;
@@ -108,6 +114,9 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
     {
         try
         {
+            _elevationRsaKey?.Dispose();
+            _elevationRsaKey = RSA.Create(2048);
+
             if (Connection is not null)
             {
                 await Connection.DisposeAsync();
@@ -359,7 +368,8 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
             return Task.CompletedTask;
         }
 
-        return Connection.SendAsync("ReportElevationStatus", isElevated);
+        var publicKey = isElevated ? Array.Empty<byte>() : _elevationRsaKey!.ExportSubjectPublicKeyInfo();
+        return Connection.SendAsync("ReportElevationStatus", isElevated, publicKey);
     }
 
     public Task SendMessageToViewer(string viewerID, string message)
@@ -398,9 +408,11 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         _appState.InvokeViewerRemoved(viewerId);
     }
 
-    public Task RequestElevation(string username, string domain, string password)
+    public Task RequestElevation(byte[] encryptedCredentials)
     {
-        ElevationRequested?.Invoke(this, new ElevationRequestedEventArgs(username, domain, password));
+        var decrypted = _elevationRsaKey!.Decrypt(encryptedCredentials, RSAEncryptionPadding.OaepSHA256);
+        var creds = JsonSerializer.Deserialize<ElevationCredentials>(decrypted)!;
+        ElevationRequested?.Invoke(this, new ElevationRequestedEventArgs(creds.Username, creds.Domain, creds.Password));
         return Task.CompletedTask;
     }
 
@@ -419,7 +431,7 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         connection.On<byte[], string>(nameof(SendDtoToClient), SendDtoToClient);
         connection.On<string>(nameof(ViewerDisconnected), ViewerDisconnected);
         connection.On<RemoteControlAccessRequest, PromptForAccessResult>(nameof(PromptForAccess), PromptForAccess);
-        connection.On<string, string, string>(nameof(RequestElevation), RequestElevation);
+        connection.On<byte[]>(nameof(RequestElevation), RequestElevation);
     }
 
     private Result<HubConnection> BuildConnection()

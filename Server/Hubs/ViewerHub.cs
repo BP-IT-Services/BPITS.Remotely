@@ -196,7 +196,7 @@ public class ViewerHub : Hub<IViewerHubClient>
             .SendDtoToClient(dtoWrapper, Context.ConnectionId);
     }
 
-    public Task RequestElevation(string username, string domain, string password)
+    public Task RequestElevation(byte[] encryptedCredentials)
     {
         if (string.IsNullOrWhiteSpace(SessionInfo.DesktopConnectionId))
         {
@@ -205,7 +205,7 @@ public class ViewerHub : Hub<IViewerHubClient>
 
         return _desktopHub.Clients
             .Client(SessionInfo.DesktopConnectionId)
-            .RequestElevation(username, domain, password);
+            .RequestElevation(encryptedCredentials);
     }
     public async Task<Result> SendScreenCastRequestToDevice(string sessionId, string accessKey, string requesterName)
     {
@@ -295,7 +295,7 @@ public class ViewerHub : Hub<IViewerHubClient>
                     SessionInfo.StreamId);
         }
 
-        await Clients.Caller.ReceiveElevationStatus(SessionInfo.IsElevated);
+        await Clients.Caller.ReceiveElevationStatus(SessionInfo.IsElevated, SessionInfo.ElevationPublicKey ?? Array.Empty<byte>());
 
         return Result.Ok();
     }

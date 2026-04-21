@@ -21,7 +21,7 @@ public interface IViewerHubClient
 
     Task ViewerRemoved();
 
-    Task ReceiveElevationStatus(bool isElevated);
+    Task ReceiveElevationStatus(bool isElevated, byte[] elevationPublicKey);
 
     Task ElevationFailed(string reason);
 }

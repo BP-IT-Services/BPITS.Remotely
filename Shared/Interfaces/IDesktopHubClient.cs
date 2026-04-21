@@ -25,5 +25,5 @@ public interface IDesktopHubClient
 
     Task ViewerDisconnected(string viewerId);
 
-    Task RequestElevation(string username, string domain, string password);
+    Task RequestElevation(byte[] encryptedCredentials);
 }

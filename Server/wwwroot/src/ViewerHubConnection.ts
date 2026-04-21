@@ -22,6 +22,7 @@ var signalR = window["signalR"];
 export class ViewerHubConnection {
     Connection: HubConnection;
     PartialCaptureFrames: Uint8Array[] = [];
+    private ElevationPublicKey: CryptoKey | null = null;
 
 
     Connect() {
@@ -85,11 +86,17 @@ export class ViewerHubConnection {
     }
 
     async RequestElevation(username: string, domain: string, password: string) {
-        if (this.Connection?.state != HubConnectionState.Connected) {
+        if (this.Connection?.state != HubConnectionState.Connected || !this.ElevationPublicKey) {
             return;
         }
 
-        await this.Connection.invoke("RequestElevation", username, domain, password);
+        const credJson = JSON.stringify({ Username: username, Domain: domain, Password: password });
+        const encrypted = await crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            this.ElevationPublicKey,
+            new TextEncoder().encode(credJson)
+        );
+        await this.Connection.invoke("RequestElevation", new Uint8Array(encrypted));
     }
 
     async SendDtoToClient<T>(dto: T, type: DtoType): Promise<void> {
@@ -218,7 +225,18 @@ export class ViewerHubConnection {
             UI.UpdateCursor(cursor.ImageBytes, cursor.HotSpot.X, cursor.HotSpot.Y, cursor.CssOverride);
         });
 
-        hubConnection.on("ReceiveElevationStatus", (isElevated: boolean) => {
+        hubConnection.on("ReceiveElevationStatus", async (isElevated: boolean, publicKeyBytes: Uint8Array) => {
+            if (publicKeyBytes && publicKeyBytes.length > 0) {
+                this.ElevationPublicKey = await crypto.subtle.importKey(
+                    "spki",
+                    publicKeyBytes,
+                    { name: "RSA-OAEP", hash: "SHA-256" },
+                    false,
+                    ["encrypt"]
+                );
+            } else {
+                this.ElevationPublicKey = null;
+            }
             UI.SetElevationStatus(isElevated);
         });
 

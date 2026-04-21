@@ -120,44 +120,44 @@ export function SetElevationStatus(isElevated) {
 }
 export function ShowElevationDialog() {
     return new Promise((resolve) => {
-        var overlay = document.createElement("div");
+        const overlay = document.createElement("div");
         overlay.classList.add("modal-overlay");
-        var dialog = document.createElement("div");
+        const dialog = document.createElement("div");
         dialog.classList.add("modal-prompt");
-        var title = document.createElement("h3");
+        const title = document.createElement("h3");
         title.innerText = "Elevate Remote Agent";
         dialog.appendChild(title);
-        var note = document.createElement("p");
+        const note = document.createElement("p");
         note.innerText = "Enter local administrator credentials to relaunch the remote agent with elevated privileges.";
         dialog.appendChild(note);
-        var usernameInput = document.createElement("input");
+        const usernameInput = document.createElement("input");
         usernameInput.type = "text";
         usernameInput.placeholder = "Username";
         usernameInput.autocomplete = "off";
         dialog.appendChild(usernameInput);
-        var domainInput = document.createElement("input");
+        const domainInput = document.createElement("input");
         domainInput.type = "text";
         domainInput.placeholder = "Domain (leave blank for local account)";
         domainInput.autocomplete = "off";
         dialog.appendChild(domainInput);
-        var passwordInput = document.createElement("input");
+        const passwordInput = document.createElement("input");
         passwordInput.type = "password";
         passwordInput.placeholder = "Password";
         passwordInput.autocomplete = "off";
         dialog.appendChild(passwordInput);
-        var buttons = document.createElement("div");
+        const buttons = document.createElement("div");
         buttons.classList.add("buttons-footer");
-        var submitBtn = document.createElement("button");
+        const submitBtn = document.createElement("button");
         submitBtn.innerText = "Elevate";
         submitBtn.onclick = () => {
-            var username = usernameInput.value;
-            var domain = domainInput.value || ".";
-            var password = passwordInput.value;
+            const username = usernameInput.value;
+            const domain = domainInput.value || ".";
+            const password = passwordInput.value;
             passwordInput.value = "";
             overlay.remove();
             resolve({ username, domain, password });
         };
-        var cancelBtn = document.createElement("button");
+        const cancelBtn = document.createElement("button");
         cancelBtn.innerText = "Cancel";
         cancelBtn.onclick = () => {
             passwordInput.value = "";
