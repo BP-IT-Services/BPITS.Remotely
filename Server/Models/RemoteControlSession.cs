@@ -34,6 +34,7 @@ public class RemoteControlSession : IDisposable
     /// control session has started.
     /// </summary>
     public bool IsElevated { get; set; }
+    public byte[]? ElevationPublicKey { get; set; }
 
     public bool NotifyUserOnStart { get; set; } = true;
 

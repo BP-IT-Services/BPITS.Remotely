@@ -12,6 +12,7 @@ var signalR = window["signalR"];
 export class ViewerHubConnection {
     constructor() {
         this.PartialCaptureFrames = [];
+        this.ElevationPublicKey = null;
     }
     Connect() {
         if (this.Connection) {
@@ -65,10 +66,12 @@ export class ViewerHubConnection {
     }
     async RequestElevation(username, domain, password) {
         var _a;
-        if (((_a = this.Connection) === null || _a === void 0 ? void 0 : _a.state) != HubConnectionState.Connected) {
+        if (((_a = this.Connection) === null || _a === void 0 ? void 0 : _a.state) != HubConnectionState.Connected || !this.ElevationPublicKey) {
             return;
         }
-        await this.Connection.invoke("RequestElevation", username, domain, password);
+        const credJson = JSON.stringify({ Username: username, Domain: domain, Password: password });
+        const encrypted = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, this.ElevationPublicKey, new TextEncoder().encode(credJson));
+        await this.Connection.invoke("RequestElevation", new Uint8Array(encrypted));
     }
     async SendDtoToClient(dto, type) {
         var _a;
@@ -175,7 +178,13 @@ export class ViewerHubConnection {
         hubConnection.on("CursorChange", (cursor) => {
             UI.UpdateCursor(cursor.ImageBytes, cursor.HotSpot.X, cursor.HotSpot.Y, cursor.CssOverride);
         });
-        hubConnection.on("ReceiveElevationStatus", (isElevated) => {
+        hubConnection.on("ReceiveElevationStatus", async (isElevated, publicKeyBytes) => {
+            if (publicKeyBytes && publicKeyBytes.length > 0) {
+                this.ElevationPublicKey = await crypto.subtle.importKey("spki", publicKeyBytes, { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
+            }
+            else {
+                this.ElevationPublicKey = null;
+            }
             UI.SetElevationStatus(isElevated);
         });
         hubConnection.on("ElevationFailed", (reason) => {

@@ -194,10 +194,11 @@ public class DesktopHub : Hub<IDesktopHubClient>
         }
     }
 
-    public async Task ReportElevationStatus(bool isElevated)
+    public async Task ReportElevationStatus(bool isElevated, byte[] elevationPublicKey)
     {
         SessionInfo.IsElevated = isElevated;
-        await _viewerHub.Clients.Clients(ViewerList).ReceiveElevationStatus(isElevated);
+        SessionInfo.ElevationPublicKey = elevationPublicKey;
+        await _viewerHub.Clients.Clients(ViewerList).ReceiveElevationStatus(isElevated, elevationPublicKey);
     }
 
     public Task ReceiveAttendedSessionInfo(string machineName)
