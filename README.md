@@ -8,6 +8,7 @@ This is a fork of [immense/Remotely](https://github.com/immense/Remotely), maint
 
 - **Signed agent binaries** - Windows agent executables are signed via Azure Artifact Signing and embedded into the built container image, so devices receive signed binaries without any extra steps.
 - **Per-device attended access** - User consent before remote control can be set at installation time via an installer prompt or `-EnforceAttendedAccess` flag, respected unless overridden by the server config.
+- **Attended session elevation** - When running an attended session on Windows, the technician can supply admin credentials through the viewer to relaunch the remote agent at high integrity. This lets the technician interact with UAC prompts and elevated applications that would otherwise be unreachable from a standard user session.
 
 ---
 
