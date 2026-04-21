@@ -1,6 +1,7 @@
 ﻿using Avalonia.Controls;
 using Remotely.Desktop.Shared.Services;
 using Remotely.Shared.Models;
+using Remotely.Shared.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows.Input;
@@ -37,6 +38,7 @@ public class MainViewViewModel : BrandedViewModelBase, IMainViewViewModel
     private readonly IDesktopEnvironment _environment;
     private readonly IDialogProvider _dialogProvider;
     private readonly IDesktopHubConnection _hubConnection;
+    private readonly IElevationDetector _elevationDetector;
     private readonly IServiceProvider _serviceProvider;
     private readonly IViewModelFactory _viewModelFactory;
     private IList<IViewer> _selectedViewers = new List<IViewer>();
@@ -46,6 +48,7 @@ public class MainViewViewModel : BrandedViewModelBase, IMainViewViewModel
       IUiDispatcher dispatcher,
       IAppState appState,
       IDesktopHubConnection hubConnection,
+      IElevationDetector elevationDetector,
       IServiceProvider serviceProvider,
       IViewModelFactory viewModelFactory,
       IDesktopEnvironment environmentHelper,
@@ -55,6 +58,7 @@ public class MainViewViewModel : BrandedViewModelBase, IMainViewViewModel
     {
         _appState = appState;
         _hubConnection = hubConnection;
+        _elevationDetector = elevationDetector;
         _serviceProvider = serviceProvider;
         _viewModelFactory = viewModelFactory;
         _environment = environmentHelper;
@@ -148,6 +152,7 @@ public class MainViewViewModel : BrandedViewModelBase, IMainViewViewModel
     {
         var sessionId = await _hubConnection.GetSessionID();
         await _hubConnection.SendAttendedSessionInfo(Environment.MachineName);
+        await _hubConnection.SendElevationStatus(_elevationDetector.IsElevated());
 
         var formattedSessionID = "";
         for (var i = 0; i < sessionId.Length; i += 3)

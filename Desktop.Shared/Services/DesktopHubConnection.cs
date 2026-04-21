@@ -13,6 +13,13 @@ using Remotely.Desktop.Native.Windows;
 
 namespace Remotely.Desktop.Shared.Services;
 
+public class ElevationRequestedEventArgs(string username, string domain, string password) : EventArgs
+{
+    public string Username { get; } = username;
+    public string Domain { get; } = domain;
+    public string Password { get; } = password;
+}
+
 public interface IDesktopHubConnection
 {
     HubConnection? Connection { get; }
@@ -32,6 +39,10 @@ public interface IDesktopHubConnection
     Task SendConnectionFailedToViewers(List<string> viewerIDs);
     Task SendConnectionRequestDenied(string viewerID);
     Task SendDtoToViewer<T>(T dto, string viewerId);
+
+    Task SendElevationStatus(bool isElevated);
+
+    event EventHandler<ElevationRequestedEventArgs>? ElevationRequested;
 
     Task SendMessageToViewer(string viewerID, string message);
     Task<Result> SendUnattendedSessionInfo(string sessionId, string accessKey, string machineName, string requesterName, string organizationName);
@@ -63,6 +74,8 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         messenger.Register<WindowsSessionEndingMessage>(this, HandleWindowsSessionEnding);
         messenger.Register<WindowsSessionSwitchedMessage>(this, HandleWindowsSessionChanged);
     }
+
+    public event EventHandler<ElevationRequestedEventArgs>? ElevationRequested;
 
     public HubConnection? Connection { get; private set; }
     public HubConnectionState ConnectionState => Connection?.State ?? HubConnectionState.Disconnected;
@@ -339,6 +352,16 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         return Connection.SendAsync("SendDtoToViewer", serializedDto, viewerId);
     }
 
+    public Task SendElevationStatus(bool isElevated)
+    {
+        if (Connection is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Connection.SendAsync("ReportElevationStatus", isElevated);
+    }
+
     public Task SendMessageToViewer(string viewerID, string message)
     {
         if (Connection is null)
@@ -375,6 +398,12 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         _appState.InvokeViewerRemoved(viewerId);
     }
 
+    public Task RequestElevation(string username, string domain, string password)
+    {
+        ElevationRequested?.Invoke(this, new ElevationRequestedEventArgs(username, domain, password));
+        return Task.CompletedTask;
+    }
+
     private void ApplyConnectionHandlers(HubConnection connection)
     {
         connection.Closed += (ex) =>
@@ -390,6 +419,7 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         connection.On<byte[], string>(nameof(SendDtoToClient), SendDtoToClient);
         connection.On<string>(nameof(ViewerDisconnected), ViewerDisconnected);
         connection.On<RemoteControlAccessRequest, PromptForAccessResult>(nameof(PromptForAccess), PromptForAccess);
+        connection.On<string, string, string>(nameof(RequestElevation), RequestElevation);
     }
 
     private Result<HubConnection> BuildConnection()

@@ -38,6 +38,8 @@ import {
     MetricsFrame,
     SetStatusMessage,
     BetaPillPullDown,
+    ElevateButton,
+    ShowElevationDialog,
 } from "./UI.js";
 import { Sound } from "./Sound.js";
 import { ViewerApp } from "./App.js";
@@ -172,6 +174,14 @@ export function ApplyInputHandlers() {
 
         CloseAllPopupMenus(null);
         await ViewerApp.MessageSender.SendCtrlAltDel();
+    });
+    ElevateButton.addEventListener("click", async () => {
+        CloseAllPopupMenus(null);
+        const creds = await ShowElevationDialog();
+        if (!creds) {
+            return;
+        }
+        await ViewerApp.ViewerHubConnection.RequestElevation(creds.username, creds.domain, creds.password);
     });
     DisconnectButton.addEventListener("click", (ev) => {
         ConnectButton.removeAttribute("disabled");

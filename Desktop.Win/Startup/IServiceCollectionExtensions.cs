@@ -4,6 +4,7 @@ using Remotely.Desktop.Shared.Startup;
 using Remotely.Desktop.UI.Startup;
 using System.Runtime.Versioning;
 using Remotely.Desktop.Win.Services;
+using Remotely.Shared.Services;
 
 namespace Remotely.Desktop.Win.Startup;
 
@@ -28,6 +29,7 @@ public static class IServiceCollectionExtensions
         services.AddSingleton<IShutdownService, ShutdownServiceWin>();
         services.AddSingleton<IMessageLoop, MessageLoop>();
         services.AddSingleton<IAppStartup, AppStartup>();
+        services.AddSingleton<IElevationDetector, ElevationDetectorWin>();
         services.AddTransient<IFileTransferService, FileTransferServiceWin>();
         services.AddTransient<IScreenCapturer, ScreenCapturerWin>();
     }

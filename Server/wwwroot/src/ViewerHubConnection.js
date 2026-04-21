@@ -63,6 +63,13 @@ export class ViewerHubConnection {
         }
         await this.Connection.invoke("InvokeCtrlAltDel");
     }
+    async RequestElevation(username, domain, password) {
+        var _a;
+        if (((_a = this.Connection) === null || _a === void 0 ? void 0 : _a.state) != HubConnectionState.Connected) {
+            return;
+        }
+        await this.Connection.invoke("RequestElevation", username, domain, password);
+    }
     async SendDtoToClient(dto, type) {
         var _a;
         if (((_a = this.Connection) === null || _a === void 0 ? void 0 : _a.state) != HubConnectionState.Connected) {
@@ -167,6 +174,12 @@ export class ViewerHubConnection {
         });
         hubConnection.on("CursorChange", (cursor) => {
             UI.UpdateCursor(cursor.ImageBytes, cursor.HotSpot.X, cursor.HotSpot.Y, cursor.CssOverride);
+        });
+        hubConnection.on("ReceiveElevationStatus", (isElevated) => {
+            UI.SetElevationStatus(isElevated);
+        });
+        hubConnection.on("ElevationFailed", (reason) => {
+            ShowToast(`Elevation failed: ${reason}`);
         });
         hubConnection.on("ShowMessage", (message) => {
             ShowToast(message);

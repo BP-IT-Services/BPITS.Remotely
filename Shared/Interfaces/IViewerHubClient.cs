@@ -20,4 +20,8 @@ public interface IViewerHubClient
     Task ShowMessage(string message);
 
     Task ViewerRemoved();
+
+    Task ReceiveElevationStatus(bool isElevated);
+
+    Task ElevationFailed(string reason);
 }

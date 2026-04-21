@@ -24,4 +24,6 @@ public interface IDesktopHubClient
     Task SendDtoToClient(byte[] dtoWrapper, string viewerConnectionId);
 
     Task ViewerDisconnected(string viewerId);
+
+    Task RequestElevation(string username, string domain, string password);
 }

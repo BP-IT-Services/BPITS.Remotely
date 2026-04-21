@@ -4,6 +4,7 @@ using Remotely.Desktop.Shared.Enums;
 using Remotely.Desktop.Shared.Services;
 using Remotely.Desktop.UI.Services;
 using Remotely.Shared.Models;
+using Remotely.Shared.Services;
 
 namespace Remotely.Desktop.Win.Services;
 
@@ -20,6 +21,7 @@ internal class AppStartup : IAppStartup
     private readonly IIdleTimer _idleTimer;
     private readonly IShutdownService _shutdownService;
     private readonly IBrandingProvider _brandingProvider;
+    private readonly IElevationDetector _elevationDetector;
     private readonly ILogger<AppStartup> _logger;
 
     public AppStartup(
@@ -34,6 +36,7 @@ internal class AppStartup : IAppStartup
         IIdleTimer idleTimer,
         IShutdownService shutdownService,
         IBrandingProvider brandingProvider,
+        IElevationDetector elevationDetector,
         ILogger<AppStartup> logger)
     {
         _appState = appState;
@@ -47,6 +50,7 @@ internal class AppStartup : IAppStartup
         _idleTimer = idleTimer;
         _shutdownService = shutdownService;
         _brandingProvider = brandingProvider;
+        _elevationDetector = elevationDetector;
         _logger = logger;
     }
 
@@ -77,6 +81,7 @@ internal class AppStartup : IAppStartup
                 }
             case AppMode.Attended:
                 {
+                    _desktopHub.ElevationRequested += OnElevationRequested;
                     _uiDispatcher.StartClassicDesktop();
                     break;
                 }
@@ -150,6 +155,29 @@ internal class AppStartup : IAppStartup
         finally
         {
             _idleTimer.Start();
+        }
+    }
+
+    private async void OnElevationRequested(object? sender, ElevationRequestedEventArgs e)
+    {
+        try
+        {
+            var success = Win32Interop.RelaunchElevated(e.Username, e.Domain, e.Password, out _);
+            if (success)
+            {
+                await _shutdownService.Shutdown();
+            }
+            else
+            {
+                foreach (var viewer in _appState.Viewers.Values)
+                {
+                    await _desktopHub.SendMessageToViewer(viewer.ViewerConnectionId, "Elevation failed: invalid credentials or insufficient privileges.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during elevation relaunch.");
         }
     }
 
