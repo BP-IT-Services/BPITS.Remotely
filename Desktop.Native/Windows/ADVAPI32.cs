@@ -360,5 +360,21 @@ public static class ADVAPI32
 
     [DllImport("advapi32.dll", SetLastError = false)]
     public static extern uint LsaNtStatusToWinError(uint status);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool CreateProcessWithLogonW(
+        string lpUsername,
+        string lpDomain,
+        string lpPassword,
+        uint dwLogonFlags,
+        string? lpApplicationName,
+        string lpCommandLine,
+        uint dwCreationFlags,
+        nint lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    public const uint LOGON_WITH_PROFILE = 1;
     #endregion
 }

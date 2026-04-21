@@ -26,6 +26,9 @@ public static class Kernel32
     [DllImport("kernel32.dll")]
     public static extern uint WTSGetActiveConsoleSessionId();
 
+    [DllImport("kernel32.dll")]
+    public static extern uint GetCurrentThreadId();
+
     /// <summary>
     /// contains information about the current state of both physical and virtual memory, including extended memory
     /// </summary>

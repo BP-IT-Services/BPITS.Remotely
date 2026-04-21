@@ -2,6 +2,9 @@ using Remotely.Shared.Models;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using static Remotely.Desktop.Native.Windows.ADVAPI32;
 using static Remotely.Desktop.Native.Windows.User32;
@@ -252,70 +255,51 @@ public class Win32Interop
         return (MessageBoxResult)MessageBox(owner, message, caption, (long)messageBoxType);
     }
 
-    public static bool RelaunchElevated(string username, string domain, string password, out PROCESS_INFORMATION procInfo)
+    [SupportedOSPlatform("windows")]
+    public static bool RelaunchElevated(string username, string domain, string password, out PROCESS_INFORMATION procInfo, out string errorMessage)
     {
         procInfo = new PROCESS_INFORMATION();
-        nint hToken = nint.Zero;
-        nint hLinkedToken = nint.Zero;
+        errorMessage = string.Empty;
 
-        try
+        var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+        var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
+        var commandLine = $"\"{exePath}\" {args}";
+
+        // Grant the target user's SID access to the current window station and desktop
+        // before launching. A new logon session created by CreateProcessWithLogonW gets a
+        // fresh logon SID that is not in winsta0's DACL, so USER32/GDI32 DLL init would
+        // fail with 0xC0000142 without this step.
+        GrantWindowStationAndDesktopAccess(username, domain);
+
+        var si = new STARTUPINFO();
+        si.cb = Marshal.SizeOf(si);
+        // Leave lpDesktop null so the child inherits the caller's desktop; the ACL grant
+        // above ensures the new session token is allowed to connect to it.
+
+        // CreateProcessWithLogonW requires no elevated caller privileges, unlike LogonUser
+        // (which requires SE_TCB_NAME) or CreateProcessAsUser (which requires
+        // SE_ASSIGNPRIMARYTOKEN_NAME). For admin accounts under UAC it creates a
+        // high-integrity process — the same mechanism used by runas.exe.
+        var result = CreateProcessWithLogonW(
+            username,
+            domain,
+            password,
+            LOGON_WITH_PROFILE,
+            null,
+            commandLine,
+            NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT,
+            nint.Zero,
+            null,
+            ref si,
+            out procInfo);
+
+        if (!result)
         {
-            const int LOGON32_LOGON_INTERACTIVE = 2;
-            const int LOGON32_PROVIDER_DEFAULT = 0;
-
-            if (!LogonUser(username, domain, password, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out hToken))
-            {
-                return false;
-            }
-
-            // Try to get the linked (fully elevated) token. This succeeds when UAC is
-            // enabled and the account has a split admin token. On failure (UAC off, or
-            // a standard-user account), fall back to the logon token as-is.
-            uint ptrSize = (uint)nint.Size;
-            var tokenInfoPtr = Marshal.AllocHGlobal((int)ptrSize);
-            try
-            {
-                if (GetTokenInformation(hToken, SECUR32.TOKEN_INFORMATION_CLASS.TokenLinkedToken, tokenInfoPtr, ptrSize, out _))
-                {
-                    hLinkedToken = Marshal.ReadIntPtr(tokenInfoPtr);
-                }
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(tokenInfoPtr);
-            }
-
-            var tokenToUse = hLinkedToken != nint.Zero ? hLinkedToken : hToken;
-
-            var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
-            var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
-            var commandLine = $"\"{exePath}\" {args}";
-
-            var si = new STARTUPINFO();
-            si.cb = Marshal.SizeOf(si);
-            si.lpDesktop = @"winsta0\Default";
-
-            var sa = new SECURITY_ATTRIBUTES();
-            sa.Length = Marshal.SizeOf(sa);
-
-            return CreateProcessAsUser(
-                tokenToUse,
-                null,
-                commandLine,
-                ref sa,
-                ref sa,
-                false,
-                NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT,
-                nint.Zero,
-                null,
-                ref si,
-                out procInfo);
+            var error = Marshal.GetLastWin32Error();
+            errorMessage = $"Win32 error {error}: {new System.ComponentModel.Win32Exception(error).Message}";
         }
-        finally
-        {
-            if (hToken != nint.Zero) Kernel32.CloseHandle(hToken);
-            if (hLinkedToken != nint.Zero) Kernel32.CloseHandle(hLinkedToken);
-        }
+
+        return result;
     }
 
     public static bool SwitchToInputDesktop()
@@ -358,6 +342,63 @@ public class Win32Interop
         }
 
         Kernel32.CloseHandle(handle);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void GrantWindowStationAndDesktopAccess(string username, string domain)
+    {
+        try
+        {
+            SecurityIdentifier? sid = null;
+            foreach (var account in new[] { TryMakeAccount(username), TryMakeAccount(domain, username) })
+            {
+                try { sid = (SecurityIdentifier?)account?.Translate(typeof(SecurityIdentifier)); }
+                catch { /* try next */ }
+                if (sid != null) break;
+            }
+
+            if (sid == null) return;
+
+            const int WINSTA_ALL_ACCESS  = 0x37F;
+            const int DESKTOP_ALL_ACCESS = 0x1FF;
+            const uint DACL_INFO         = 0x4; // DACL_SECURITY_INFORMATION
+
+            GrantObjectAccess(GetProcessWindowStation(), sid, WINSTA_ALL_ACCESS, DACL_INFO);
+            GrantObjectAccess(GetThreadDesktop(Kernel32.GetCurrentThreadId()), sid, DESKTOP_ALL_ACCESS, DACL_INFO);
+        }
+        catch { /* best-effort; CreateProcessWithLogonW will surface any resulting error */ }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static NTAccount? TryMakeAccount(string user, string? domain = null) =>
+        string.IsNullOrWhiteSpace(user) ? null :
+        domain is null ? new NTAccount(user) : new NTAccount(domain, user);
+
+    [SupportedOSPlatform("windows")]
+    private static void GrantObjectAccess(nint hObject, SecurityIdentifier sid, int accessMask, uint securityInfo)
+    {
+        GetUserObjectSecurity(hObject, ref securityInfo, nint.Zero, 0, out var needed);
+        if (needed == 0) return;
+
+        var sdBuf = Marshal.AllocHGlobal((int)needed);
+        try
+        {
+            if (!GetUserObjectSecurity(hObject, ref securityInfo, sdBuf, needed, out _)) return;
+
+            var sdBytes = new byte[needed];
+            Marshal.Copy(sdBuf, sdBytes, 0, (int)needed);
+
+            var sd   = new RawSecurityDescriptor(sdBytes, 0);
+            var dacl = sd.DiscretionaryAcl ?? new RawAcl(RawAcl.AclRevision, 4);
+            dacl.InsertAce(dacl.Count,
+                new CommonAce(AceFlags.None, AceQualifier.AccessAllowed, accessMask, sid, false, null));
+            sd.DiscretionaryAcl = dacl;
+
+            var newSd = new byte[sd.BinaryLength];
+            sd.GetBinaryForm(newSd, 0);
+            SetUserObjectSecurity(hObject, ref securityInfo, newSd);
+        }
+        finally { Marshal.FreeHGlobal(sdBuf); }
     }
 
     public static bool TryGetDesktopName(nint desktopHandle, [NotNullWhen(true)] out string? desktopName)

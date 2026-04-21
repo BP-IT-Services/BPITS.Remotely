@@ -162,16 +162,19 @@ internal class AppStartup : IAppStartup
     {
         try
         {
-            var success = Win32Interop.RelaunchElevated(e.Username, e.Domain, e.Password, out _);
+            var success = Win32Interop.RelaunchElevated(e.Username, e.Domain, e.Password, out _, out var elevationError);
             if (success)
             {
                 await _shutdownService.Shutdown();
             }
             else
             {
+                var message = string.IsNullOrEmpty(elevationError)
+                    ? "Elevation failed."
+                    : $"Elevation failed: {elevationError}";
                 foreach (var viewer in _appState.Viewers.Values)
                 {
-                    await _desktopHub.SendMessageToViewer(viewer.ViewerConnectionId, "Elevation failed: invalid credentials or insufficient privileges.");
+                    await _desktopHub.SendMessageToViewer(viewer.ViewerConnectionId, message);
                 }
             }
         }

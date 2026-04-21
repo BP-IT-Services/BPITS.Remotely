@@ -1344,5 +1344,19 @@ public static class User32
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool GetUserObjectInformationW(nint hObj, int nIndex,
          [Out] byte[] pvInfo, uint nLength, out uint lpnLengthNeeded);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool GetUserObjectSecurity(
+        nint hObj,
+        ref uint pSIRequested,
+        nint pSD,
+        uint nLength,
+        out uint lpnLengthNeeded);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool SetUserObjectSecurity(
+        nint hObj,
+        ref uint pSIRequested,
+        byte[] pSD);
     #endregion
 }
