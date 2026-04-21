@@ -130,10 +130,13 @@ export function ShowToast(message: string) {
 
 export function SetElevationStatus(isElevated: boolean) {
     if (ElevateButton) {
+        ElevateButton.classList.remove("d-none");
         if (isElevated) {
-            ElevateButton.classList.add("d-none");
+            (ElevateButton as HTMLButtonElement).disabled = true;
+            ElevateButton.title = "Agent is already running with elevated privileges.";
         } else {
-            ElevateButton.classList.remove("d-none");
+            (ElevateButton as HTMLButtonElement).disabled = false;
+            ElevateButton.title = "Relaunch the remote agent with administrator credentials to enable UAC interaction.";
         }
     }
 }
@@ -160,17 +163,17 @@ export function ShowElevationDialog(): Promise<{ username: string; domain: strin
         usernameInput.autocomplete = "off";
         dialog.appendChild(usernameInput);
 
-        const domainInput = document.createElement("input");
-        domainInput.type = "text";
-        domainInput.placeholder = "Domain (leave blank for local account)";
-        domainInput.autocomplete = "off";
-        dialog.appendChild(domainInput);
-
         const passwordInput = document.createElement("input");
         passwordInput.type = "password";
         passwordInput.placeholder = "Password";
         passwordInput.autocomplete = "off";
         dialog.appendChild(passwordInput);
+
+        const domainInput = document.createElement("input");
+        domainInput.type = "text";
+        domainInput.placeholder = "Domain (leave blank for local account)";
+        domainInput.autocomplete = "off";
+        dialog.appendChild(domainInput);
 
         const buttons = document.createElement("div");
         buttons.classList.add("buttons-footer");
