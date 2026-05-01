@@ -144,9 +144,9 @@ public class UpdaterWin : IUpdater
             _logger.LogInformation("Launching installer to perform update.");
 
             Process.Start(
-                "powershell.exe", 
+                "powershell.exe",
                 $"-ExecutionPolicy Bypass -File \"{installerPath}\" -Path \"{zipPath}\" " +
-                    $"-OrganizationId {connectionInfo.OrganizationID} -ServerUrl {connectionInfo.Host}");
+                    $"-OrganizationId {connectionInfo.OrganizationID} -ServerUrl {connectionInfo.Host} -Quiet");
         }
         catch (WebException ex) when (ex.Status == WebExceptionStatus.Timeout)
         {
