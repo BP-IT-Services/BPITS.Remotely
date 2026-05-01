@@ -219,12 +219,10 @@ try {
 	Write-Log "Install/uninstall logs are being written to `"$LogPath`""
 
 	if (!$Quiet -and !$Uninstall -and !$EnforceAttendedAccess) {
-		$answer = Read-Host "Enforce attended access on this device? (y/n/[enter to use server default])"
-		$EnforceAttendedAccess = switch ($answer.ToLower()) {
-			"y" { "true" }
-			"n" { "false" }
-			default { "" }
-		}
+		do {
+			$answer = Read-Host "Enforce attended access on this device? (y/n)"
+		} until ($answer -eq "y" -or $answer -eq "n")
+		$EnforceAttendedAccess = if ($answer -eq "y") { "true" } else { "false" }
 	}
 
 	if ($Uninstall) {

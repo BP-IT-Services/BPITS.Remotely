@@ -32,12 +32,13 @@ do
 done
 
 if [ -z "$EnforceAttendedAccess" ] && [ -t 0 ]; then
-    read -p "Enforce attended access on this device? (y/n/[enter to use server default]): " answer
-    case "$answer" in
-        [yY]) EnforceAttendedAccess="true"  ;;
-        [nN]) EnforceAttendedAccess="false" ;;
-        *) EnforceAttendedAccess="" ;;
-    esac
+    while true; do
+        read -p "Enforce attended access on this device? (y/n): " answer
+        case "$answer" in
+            [yY]) EnforceAttendedAccess="true";  break ;;
+            [nN]) EnforceAttendedAccess="false"; break ;;
+        esac
+    done
 fi
 
 if [ -z "$ETag" ]; then
