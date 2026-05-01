@@ -17,9 +17,9 @@ public class DeviceInfoGeneratorMac : DeviceInfoGeneratorBase, IDeviceInformatio
     {
         _processInvoker = processInvoker;
     }
-    public async Task<DeviceClientDto> CreateDevice(string deviceId, string orgId)
+    public async Task<DeviceClientDto> CreateDevice(string deviceId, string orgId, bool? enforceAttendedAccess = null)
     {
-        var device = GetDeviceBase(deviceId, orgId);
+        var device = GetDeviceBase(deviceId, orgId, enforceAttendedAccess);
 
         try
         {

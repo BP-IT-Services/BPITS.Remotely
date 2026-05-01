@@ -17,6 +17,7 @@ public class ConnectionInfo
             _host = value?.Trim()?.TrimEnd('/');
         }
     }
+    public bool? EnforceAttendedAccess { get; set; }
     public string? OrganizationID { get; set; }
     public string? ServerVerificationToken { get; set; }
 

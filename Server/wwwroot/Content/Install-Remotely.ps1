@@ -11,6 +11,7 @@
 param (
 	[string]$DeviceAlias,
 	[string]$DeviceGroup,
+	[string]$EnforceAttendedAccess,
 	[string]$Path,
 	[string]$OrganizationId,
 	[string]$ServerUrl,
@@ -96,6 +97,9 @@ function Run-StartupChecks {
 		if ($DeviceGroup) {
 			$Params += " -DeviceGroup $DeviceGroup"
 		}
+		if ($EnforceAttendedAccess) {
+			$Params += " -EnforceAttendedAccess `"$EnforceAttendedAccess`""
+		}
 		if ($Path) {
 			$Params += " -Path `"$Path`""
 		}
@@ -179,6 +183,13 @@ function Install-Remotely {
 
 	New-Item -ItemType File -Path "$InstallPath\ConnectionInfo.json" -Value (ConvertTo-Json -InputObject $ConnectionInfo) -Force
 
+	if ($EnforceAttendedAccess -eq "true" -or $EnforceAttendedAccess -eq "false") {
+		$connInfo = Get-Content -Path "$InstallPath\ConnectionInfo.json" | ConvertFrom-Json
+		$connInfo | Add-Member -NotePropertyName "EnforceAttendedAccess" `
+			-NotePropertyValue ($EnforceAttendedAccess -eq "true") -Force
+		$connInfo | ConvertTo-Json | Set-Content -Path "$InstallPath\ConnectionInfo.json"
+	}
+
 	New-Item -ItemType File -Path "$InstallPath\etag.txt" -Value $ETag -Force
 
 	if ($DeviceAlias -or $DeviceGroup) {
@@ -206,6 +217,13 @@ try {
 	Run-StartupChecks
 
 	Write-Log "Install/uninstall logs are being written to `"$LogPath`""
+
+	if (!$Quiet -and !$Uninstall -and !$EnforceAttendedAccess) {
+		do {
+			$answer = Read-Host "Enforce attended access on this device? (y/n)"
+		} until ($answer -eq "y" -or $answer -eq "n")
+		$EnforceAttendedAccess = if ($answer -eq "y") { "true" } else { "false" }
+	}
 
 	if ($Uninstall) {
 		Write-Log "Uninstall started."

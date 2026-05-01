@@ -388,6 +388,11 @@ public class DataService : IDataService
         device.MacAddresses = deviceDto.MacAddresses ?? Array.Empty<string>();
         device.LastOnline = DateTimeOffset.Now;
 
+        if (deviceDto.EnforceAttendedAccess.HasValue)
+        {
+            device.EnforceAttendedAccess = deviceDto.EnforceAttendedAccess.Value;
+        }
+
         if (_hostEnvironment.IsDevelopment() && dbContext.Organizations.Any())
         {
             var org = await dbContext.Organizations.FirstAsync();
@@ -728,6 +733,11 @@ public class DataService : IDataService
                     x.Name.ToLower() == options.DeviceGroupName.ToLower() &&
                     x.OrganizationID == device.OrganizationID);
                 device.DeviceGroup = group;
+            }
+
+            if (options.EnforceAttendedAccess.HasValue)
+            {
+                device.EnforceAttendedAccess = options.EnforceAttendedAccess.Value;
             }
 
             dbContext.Devices.Add(device);
@@ -2179,6 +2189,12 @@ public class DataService : IDataService
         device.DeviceGroup = group;
 
         device.Alias = deviceOptions.DeviceAlias;
+
+        if (deviceOptions.EnforceAttendedAccess.HasValue)
+        {
+            device.EnforceAttendedAccess = deviceOptions.EnforceAttendedAccess.Value;
+        }
+
         await dbContext.SaveChangesAsync();
         return Result.Ok(device);
     }

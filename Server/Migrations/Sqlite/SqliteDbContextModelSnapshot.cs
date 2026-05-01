@@ -15,7 +15,7 @@ namespace Remotely.Server.Migrations.Sqlite
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.2");
+            modelBuilder.HasAnnotation("ProductVersion", "8.0.10");
 
             modelBuilder.Entity("DeviceGroupRemotelyUser", b =>
                 {
@@ -194,7 +194,7 @@ namespace Remotely.Server.Migrations.Sqlite
 
                     b.ToTable("RemotelyUsers", (string)null);
 
-                    b.HasDiscriminator<string>("Discriminator").HasValue("IdentityUser");
+                    b.HasDiscriminator().HasValue("IdentityUser");
 
                     b.UseTphMappingStrategy();
                 });
@@ -396,6 +396,9 @@ namespace Remotely.Server.Migrations.Sqlite
 
                     b.Property<string>("Drives")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool?>("EnforceAttendedAccess")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("Is64Bit")
                         .HasColumnType("INTEGER");

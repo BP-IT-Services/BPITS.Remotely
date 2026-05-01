@@ -4,6 +4,7 @@ HostName=
 Organization=
 GUID="$(uuidgen)"
 UpdatePackagePath=""
+EnforceAttendedAccess=""
 InstallDir="/usr/local/bin/Remotely"
 ETag=$(curl --head $HostName/Content/Remotely-MacOS-arm64.zip | grep -i "etag" | cut -d' ' -f 2)
 LogPath="/var/log/remotely/Agent_Install.log"
@@ -22,8 +23,20 @@ do
         exit
     elif [ "${Args[$i]}" = "--path" ]; then
         UpdatePackagePath="${Args[$i+1]}"
+    elif [ "${Args[$i]}" = "--enforce-attended-access" ]; then
+        EnforceAttendedAccess="${Args[$i+1]}"
     fi
 done
+
+if [ -z "$EnforceAttendedAccess" ] && [ -t 0 ]; then
+    while true; do
+        read -p "Enforce attended access on this device? (y/n): " answer
+        case "$answer" in
+            [yY]) EnforceAttendedAccess="true";  break ;;
+            [nN]) EnforceAttendedAccess="false"; break ;;
+        esac
+    done
+fi
 
 if [ -z "$ETag" ]; then
     echo  "ETag is empty.  Aborting install." | tee -a $LogPath
@@ -81,6 +94,12 @@ connectionInfo="{
 }"
 
 echo "$connectionInfo" > $InstallDir/ConnectionInfo.json
+
+if [ "$EnforceAttendedAccess" = "true" ] || [ "$EnforceAttendedAccess" = "false" ]; then
+    jq --argjson v "$EnforceAttendedAccess" '. + {EnforceAttendedAccess: $v}' \
+        "$InstallDir/ConnectionInfo.json" > /tmp/conn.json \
+        && mv /tmp/conn.json "$InstallDir/ConnectionInfo.json"
+fi
 
 curl --head $HostName/Content/Remotely-MacOS-arm64.zip | grep -i "etag" | cut -d' ' -f 2 > $InstallDir/etag.txt
 

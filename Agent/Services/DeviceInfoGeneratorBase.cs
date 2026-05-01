@@ -21,9 +21,8 @@ public abstract class DeviceInfoGeneratorBase
         _logger = logger;
     }
 
-    protected DeviceClientDto GetDeviceBase(string deviceID, string orgID)
+    protected DeviceClientDto GetDeviceBase(string deviceID, string orgID, bool? enforceAttendedAccess = null)
     {
-
         return new DeviceClientDto()
         {
             ID = deviceID,
@@ -36,8 +35,9 @@ public abstract class DeviceInfoGeneratorBase
             IsOnline = true,
             MacAddresses = GetMacAddresses().ToArray(),
             OrganizationID = orgID,
-            AgentVersion = AppVersionHelper.GetAppVersion()
-    };
+            AgentVersion = AppVersionHelper.GetAppVersion(),
+            EnforceAttendedAccess = enforceAttendedAccess,
+        };
     }
 
     protected (double usedStorage, double totalStorage) GetSystemDriveInfo()

@@ -34,7 +34,12 @@
 
                 <div class="small text-muted" style="height: 1rem">@Device.Alias</div>
             </div>
-            
+            @if (Device.EnforceAttendedAccess == true)
+            {
+                <span class="ms-2 text-warning" title="Enforced attended access - user consent required">
+                    <i class="oi oi-person"></i>
+                </span>
+            }
         </div>
         <div class="text-end">
             @if (IsExpanded)
@@ -156,6 +161,13 @@
             </div>
             <div>
                 @(MathHelper.GetFormattedPercent(Device.UsedMemoryPercent))
+            </div>
+
+            <div class="font-weight-bold text-info">
+                <label>Attended</label>
+            </div>
+            <div>
+                @(Device.EnforceAttendedAccess == true ? "Yes" : "No")
             </div>
 
             <div class="font-weight-bold text-info expanded-visible">
