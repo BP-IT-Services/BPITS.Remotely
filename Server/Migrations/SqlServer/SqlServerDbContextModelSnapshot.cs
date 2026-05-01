@@ -17,7 +17,7 @@ namespace Remotely.Server.Migrations.SqlServer
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.2")
+                .HasAnnotation("ProductVersion", "8.0.10")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -203,7 +203,7 @@ namespace Remotely.Server.Migrations.SqlServer
 
                     b.ToTable("RemotelyUsers", (string)null);
 
-                    b.HasDiscriminator<string>("Discriminator").HasValue("IdentityUser");
+                    b.HasDiscriminator().HasValue("IdentityUser");
 
                     b.UseTphMappingStrategy();
                 });
@@ -407,6 +407,9 @@ namespace Remotely.Server.Migrations.SqlServer
 
                     b.Property<string>("Drives")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool?>("EnforceAttendedAccess")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("Is64Bit")
                         .HasColumnType("bit");

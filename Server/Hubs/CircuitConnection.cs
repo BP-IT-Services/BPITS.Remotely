@@ -232,9 +232,11 @@ public class CircuitConnection : CircuitHandler, ICircuitConnection
         }
 
 
+        var deviceResult = await _dataService.GetDevice(targetDevice.ID);
+        var device = deviceResult.IsSuccess ? deviceResult.Value : null;
+
         if (!_dataService.DoesUserHaveAccessToDevice(deviceId, User))
         {
-            var device = _dataService.GetDevice(targetDevice.ID);
             _logger.LogWarning(
                 "Remote control attempted by unauthorized user.  Device ID: {deviceId}.  User Name: {userName}.",
                 deviceId,
@@ -265,7 +267,7 @@ public class CircuitConnection : CircuitHandler, ICircuitConnection
             DeviceId = deviceId,
             ViewOnly = viewOnly,
             OrganizationId = User.OrganizationID,
-            RequireConsent = settings.EnforceAttendedAccess,
+            RequireConsent = settings.EnforceAttendedAccess || (device?.EnforceAttendedAccess == true),
             NotifyUserOnStart = settings.RemoteControlNotifyUser
         };
 

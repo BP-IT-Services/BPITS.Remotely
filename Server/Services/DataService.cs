@@ -730,6 +730,11 @@ public class DataService : IDataService
                 device.DeviceGroup = group;
             }
 
+            if (options.EnforceAttendedAccess.HasValue)
+            {
+                device.EnforceAttendedAccess = options.EnforceAttendedAccess.Value;
+            }
+
             dbContext.Devices.Add(device);
 
             await dbContext.SaveChangesAsync();
@@ -2179,6 +2184,12 @@ public class DataService : IDataService
         device.DeviceGroup = group;
 
         device.Alias = deviceOptions.DeviceAlias;
+
+        if (deviceOptions.EnforceAttendedAccess.HasValue)
+        {
+            device.EnforceAttendedAccess = deviceOptions.EnforceAttendedAccess.Value;
+        }
+
         await dbContext.SaveChangesAsync();
         return Result.Ok(device);
     }

@@ -3,6 +3,7 @@ HostName=
 Organization=
 GUID=$(cat /proc/sys/kernel/random/uuid)
 UpdatePackagePath=""
+EnforceAttendedAccess=""
 InstallDir="/usr/local/bin/Remotely"
 
 apt-get update
@@ -25,8 +26,19 @@ do
         exit
     elif [ "${Args[$i]}" = "--path" ]; then
         UpdatePackagePath="${Args[$i+1]}"
+    elif [ "${Args[$i]}" = "--enforce-attended-access" ]; then
+        EnforceAttendedAccess="${Args[$i+1]}"
     fi
 done
+
+if [ -z "$EnforceAttendedAccess" ] && [ -t 0 ]; then
+    read -p "Enforce attended access on this device? (y/n/[enter to use server default]): " answer
+    case "$answer" in
+        [yY]) EnforceAttendedAccess="true"  ;;
+        [nN]) EnforceAttendedAccess="false" ;;
+        *) EnforceAttendedAccess="" ;;
+    esac
+fi
 
 if [ -z "$ETag" ]; then
     echo  "ETag is empty.  Aborting install." | tee -a $LogPath
@@ -86,6 +98,11 @@ connectionInfo="{
 }"
 
 echo "$connectionInfo" > $InstallDir/ConnectionInfo.json
+
+if [ -n "$EnforceAttendedAccess" ]; then
+    deviceSetupJson="{\"DeviceID\":\"$GUID\",\"OrganizationID\":\"$Organization\",\"EnforceAttendedAccess\":$EnforceAttendedAccess}"
+    curl -s -X POST -H "Content-Type: application/json" -d "$deviceSetupJson" "$HostName/api/devices"
+fi
 
 curl --head $HostName/Content/Remotely-Linux.zip | grep -i "etag" | cut -d' ' -f 2 > $InstallDir/etag.txt
 

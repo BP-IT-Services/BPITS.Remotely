@@ -34,6 +34,10 @@ public class Device
     [Sortable]
     [Display(Name = "Device Name")]
     public string? DeviceName { get; set; }
+
+    [Display(Name = "Enforce Attended Access")]
+    public bool? EnforceAttendedAccess { get; set; }
+
     public List<Drive>? Drives { get; set; }
 
     [Key]

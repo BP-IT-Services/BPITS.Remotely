@@ -11,6 +11,7 @@
 param (
 	[string]$DeviceAlias,
 	[string]$DeviceGroup,
+	[string]$EnforceAttendedAccess,
 	[string]$Path,
 	[string]$OrganizationId,
 	[string]$ServerUrl,
@@ -95,6 +96,9 @@ function Run-StartupChecks {
 		}
 		if ($DeviceGroup) {
 			$Params += " -DeviceGroup $DeviceGroup"
+		}
+		if ($EnforceAttendedAccess) {
+			$Params += " -EnforceAttendedAccess `"$EnforceAttendedAccess`""
 		}
 		if ($Path) {
 			$Params += " -Path `"$Path`""
@@ -181,12 +185,18 @@ function Install-Remotely {
 
 	New-Item -ItemType File -Path "$InstallPath\etag.txt" -Value $ETag -Force
 
-	if ($DeviceAlias -or $DeviceGroup) {
+	if ($DeviceAlias -or $DeviceGroup -or $EnforceAttendedAccess) {
 		$DeviceSetupOptions = @{
 			DeviceAlias     = $DeviceAlias;
 			DeviceGroupName = $DeviceGroup;
 			OrganizationID  = $Organization;
 			DeviceID        = $ConnectionInfo.DeviceID;
+		}
+
+		if ($EnforceAttendedAccess -eq "true") {
+			$DeviceSetupOptions["EnforceAttendedAccess"] = $true
+		} elseif ($EnforceAttendedAccess -eq "false") {
+			$DeviceSetupOptions["EnforceAttendedAccess"] = $false
 		}
 
 		$Body = $DeviceSetupOptions | ConvertTo-Json
@@ -206,6 +216,15 @@ try {
 	Run-StartupChecks
 
 	Write-Log "Install/uninstall logs are being written to `"$LogPath`""
+
+	if (!$Quiet -and !$Uninstall -and !$EnforceAttendedAccess) {
+		$answer = Read-Host "Enforce attended access on this device? (y/n/[enter to use server default])"
+		$EnforceAttendedAccess = switch ($answer.ToLower()) {
+			"y" { "true" }
+			"n" { "false" }
+			default { "" }
+		}
+	}
 
 	if ($Uninstall) {
 		Write-Log "Uninstall started."
