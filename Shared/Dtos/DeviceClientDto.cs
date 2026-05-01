@@ -11,6 +11,9 @@ public class DeviceClientDto
     public string AgentVersion { get; set; } = string.Empty;
 
     [DataMember]
+    public bool? EnforceAttendedAccess { get; set; }
+
+    [DataMember]
     public double CpuUtilization { get; set; }
 
     [DataMember]

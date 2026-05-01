@@ -388,6 +388,11 @@ public class DataService : IDataService
         device.MacAddresses = deviceDto.MacAddresses ?? Array.Empty<string>();
         device.LastOnline = DateTimeOffset.Now;
 
+        if (deviceDto.EnforceAttendedAccess.HasValue)
+        {
+            device.EnforceAttendedAccess = deviceDto.EnforceAttendedAccess.Value;
+        }
+
         if (_hostEnvironment.IsDevelopment() && dbContext.Organizations.Any())
         {
             var org = await dbContext.Organizations.FirstAsync();

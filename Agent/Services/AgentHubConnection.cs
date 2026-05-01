@@ -150,7 +150,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
 
                 _logger.LogInformation("Connected to server.");
 
-                var device = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, _connectionInfo.OrganizationID);
+                var device = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, _connectionInfo.OrganizationID, _connectionInfo.EnforceAttendedAccess);
 
                 var result = await _hubConnection.InvokeAsync<bool>("DeviceCameOnline", device);
 
@@ -457,7 +457,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
                 return;
             }
 
-            var currentInfo = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, _connectionInfo.OrganizationID);
+            var currentInfo = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, _connectionInfo.OrganizationID, _connectionInfo.EnforceAttendedAccess);
             await _hubConnection
                 .SendAsync("DeviceHeartbeat", currentInfo)
                 .ConfigureAwait(false);
@@ -584,7 +584,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
         _logger.LogInformation("Reconnected to server.");
         await _updater.CheckForUpdates();
 
-        var device = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, $"{_connectionInfo.OrganizationID}");
+        var device = await _deviceInfoService.CreateDevice(_connectionInfo.DeviceID, $"{_connectionInfo.OrganizationID}", _connectionInfo.EnforceAttendedAccess);
 
         if (!await _hubConnection.InvokeAsync<bool>("DeviceCameOnline", device))
         {

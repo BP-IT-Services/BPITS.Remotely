@@ -94,9 +94,10 @@ connectionInfo="{
 
 echo "$connectionInfo" > $InstallDir/ConnectionInfo.json
 
-if [ -n "$EnforceAttendedAccess" ]; then
-    deviceSetupJson="{\"DeviceID\":\"$GUID\",\"OrganizationID\":\"$Organization\",\"EnforceAttendedAccess\":$EnforceAttendedAccess}"
-    curl -s -X POST -H "Content-Type: application/json" -d "$deviceSetupJson" "$HostName/api/devices"
+if [ "$EnforceAttendedAccess" = "true" ] || [ "$EnforceAttendedAccess" = "false" ]; then
+    jq --argjson v "$EnforceAttendedAccess" '. + {EnforceAttendedAccess: $v}' \
+        "$InstallDir/ConnectionInfo.json" > /tmp/conn.json \
+        && mv /tmp/conn.json "$InstallDir/ConnectionInfo.json"
 fi
 
 curl --head $HostName/Content/Remotely-MacOS-arm64.zip | grep -i "etag" | cut -d' ' -f 2 > $InstallDir/etag.txt

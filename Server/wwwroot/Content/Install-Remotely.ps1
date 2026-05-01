@@ -183,20 +183,21 @@ function Install-Remotely {
 
 	New-Item -ItemType File -Path "$InstallPath\ConnectionInfo.json" -Value (ConvertTo-Json -InputObject $ConnectionInfo) -Force
 
+	if ($EnforceAttendedAccess -eq "true" -or $EnforceAttendedAccess -eq "false") {
+		$connInfo = Get-Content -Path "$InstallPath\ConnectionInfo.json" | ConvertFrom-Json
+		$connInfo | Add-Member -NotePropertyName "EnforceAttendedAccess" `
+			-NotePropertyValue ($EnforceAttendedAccess -eq "true") -Force
+		$connInfo | ConvertTo-Json | Set-Content -Path "$InstallPath\ConnectionInfo.json"
+	}
+
 	New-Item -ItemType File -Path "$InstallPath\etag.txt" -Value $ETag -Force
 
-	if ($DeviceAlias -or $DeviceGroup -or $EnforceAttendedAccess) {
+	if ($DeviceAlias -or $DeviceGroup) {
 		$DeviceSetupOptions = @{
 			DeviceAlias     = $DeviceAlias;
 			DeviceGroupName = $DeviceGroup;
 			OrganizationID  = $Organization;
 			DeviceID        = $ConnectionInfo.DeviceID;
-		}
-
-		if ($EnforceAttendedAccess -eq "true") {
-			$DeviceSetupOptions["EnforceAttendedAccess"] = $true
-		} elseif ($EnforceAttendedAccess -eq "false") {
-			$DeviceSetupOptions["EnforceAttendedAccess"] = $false
 		}
 
 		$Body = $DeviceSetupOptions | ConvertTo-Json

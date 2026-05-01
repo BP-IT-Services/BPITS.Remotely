@@ -5,5 +5,5 @@ namespace Remotely.Agent.Interfaces;
 
 public interface IDeviceInformationService
 {
-    Task<DeviceClientDto> CreateDevice(string deviceId, string orgId);
+    Task<DeviceClientDto> CreateDevice(string deviceId, string orgId, bool? enforceAttendedAccess = null);
 }
