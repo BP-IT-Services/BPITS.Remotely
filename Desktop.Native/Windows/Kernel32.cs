@@ -29,6 +29,15 @@ public static class Kernel32
     [DllImport("kernel32.dll")]
     public static extern uint GetCurrentThreadId();
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint WaitForSingleObject(nint hHandle, uint dwMilliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetExitCodeProcess(nint hProcess, out uint lpExitCode);
+
+    public const uint WAIT_OBJECT_0 = 0;
+    public const uint STILL_ACTIVE = 259;
+
     /// <summary>
     /// contains information about the current state of both physical and virtual memory, including extended memory
     /// </summary>

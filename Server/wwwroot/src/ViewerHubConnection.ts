@@ -240,10 +240,6 @@ export class ViewerHubConnection {
             UI.SetElevationStatus(isElevated);
         });
 
-        hubConnection.on("ElevationFailed", (reason: string) => {
-            ShowToast(`Elevation failed: ${reason}`);
-        });
-
         hubConnection.on("ShowMessage", (message: string) => {
             ShowToast(message);
             UI.SetStatusMessage(message);

@@ -35,6 +35,7 @@ public interface IDesktopHubConnection
     Task DisconnectAllViewers();
     Task DisconnectViewer(IViewer viewer, bool notifyViewer);
     Task<string> GetSessionID();
+    Task NotifyElevationRelaunch();
     Task NotifyRequesterUnattendedReady();
     Task NotifyViewersRelaunchedScreenCasterReady(string[] viewerIDs);
     Task SendAttendedSessionInfo(string machineName);
@@ -254,6 +255,16 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         return await Connection.InvokeAsync<string>("GetSessionID");
     }
 
+    public Task NotifyElevationRelaunch()
+    {
+        if (Connection is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Connection.SendAsync("NotifyElevationRelaunch");
+    }
+
     public Task NotifyRequesterUnattendedReady()
     {
         if (Connection is null)
@@ -408,12 +419,25 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
         _appState.InvokeViewerRemoved(viewerId);
     }
 
-    public Task RequestElevation(byte[] encryptedCredentials)
+    public async Task RequestElevation(byte[] encryptedCredentials)
     {
-        var decrypted = _elevationRsaKey!.Decrypt(encryptedCredentials, RSAEncryptionPadding.OaepSHA256);
-        var creds = JsonSerializer.Deserialize<ElevationCredentials>(decrypted)!;
-        ElevationRequested?.Invoke(this, new ElevationRequestedEventArgs(creds.Username, creds.Domain, creds.Password));
-        return Task.CompletedTask;
+        _logger.LogInformation("Elevation request received from server.");
+
+        try
+        {
+            var decrypted = _elevationRsaKey!.Decrypt(encryptedCredentials, RSAEncryptionPadding.OaepSHA256);
+            var creds = JsonSerializer.Deserialize<ElevationCredentials>(decrypted)!;
+            ElevationRequested?.Invoke(this, new ElevationRequestedEventArgs(creds.Username, creds.Domain, creds.Password));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to decrypt or process elevation request.");
+
+            foreach (var viewer in _appState.Viewers.Values)
+            {
+                await SendMessageToViewer(viewer.ViewerConnectionId, "Elevation failed: unable to process the request.");
+            }
+        }
     }
 
     private void ApplyConnectionHandlers(HubConnection connection)

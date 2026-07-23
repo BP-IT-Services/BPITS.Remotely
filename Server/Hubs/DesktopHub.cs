@@ -132,6 +132,13 @@ public class DesktopHub : Hub<IDesktopHubClient>
         }
     }
 
+    public Task NotifyElevationRelaunch()
+    {
+        _logger.LogInformation("Desktop app signaled an expected disconnect for elevation relaunch.");
+        SessionInfo.StreamerState |= StreamerState.DisconnectExpected;
+        return Task.CompletedTask;
+    }
+
     public Task NotifyViewersRelaunchedScreenCasterReady(string[] viewerIDs)
     {
         SessionInfo.DesktopConnectionId = Context.ConnectionId;
@@ -157,9 +164,15 @@ public class DesktopHub : Hub<IDesktopHubClient>
 
         if (SessionInfo.Mode == RemoteControlMode.Attended)
         {
+            var disconnectExpected = SessionInfo.StreamerState.HasFlag(StreamerState.DisconnectExpected);
+
             SessionInfo.StreamerState = StreamerState.Disconnected;
             _ = _sessionCache.TryRemove(SessionInfo.AttendedSessionId, out _);
-            await _viewerHub.Clients.Clients(ViewerList).ScreenCasterDisconnected();
+
+            if (!disconnectExpected)
+            {
+                await _viewerHub.Clients.Clients(ViewerList).ScreenCasterDisconnected();
+            }
         }
         else if (
             SessionInfo.Mode == RemoteControlMode.Unattended &&

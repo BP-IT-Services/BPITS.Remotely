@@ -256,14 +256,14 @@ public class Win32Interop
     }
 
     [SupportedOSPlatform("windows")]
-    public static bool RelaunchElevated(string username, string domain, string password, out PROCESS_INFORMATION procInfo, out string errorMessage)
+    public static bool RelaunchElevated(string username, string domain, string password, string commandLineArgs, out PROCESS_INFORMATION procInfo, out string errorMessage, out int win32ErrorCode)
     {
         procInfo = new PROCESS_INFORMATION();
         errorMessage = string.Empty;
+        win32ErrorCode = 0;
 
         var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
-        var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1));
-        var commandLine = $"\"{exePath}\" {args}";
+        var commandLine = $"\"{exePath}\" {commandLineArgs}";
 
         // Grant the target user's SID access to the current window station and desktop
         // before launching. A new logon session created by CreateProcessWithLogonW gets a
@@ -295,11 +295,24 @@ public class Win32Interop
 
         if (!result)
         {
-            var error = Marshal.GetLastWin32Error();
-            errorMessage = $"Win32 error {error}: {new System.ComponentModel.Win32Exception(error).Message}";
+            win32ErrorCode = Marshal.GetLastWin32Error();
+            errorMessage = $"Win32 error {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message}";
+            return false;
         }
 
-        return result;
+        // CreateProcessWithLogonW returning true only means the process was created; it can
+        // still die immediately (e.g. 0xC0000142 if it failed to attach to the desktop). Give
+        // it a moment and confirm it's still alive before the caller shuts itself down.
+        var waitResult = Kernel32.WaitForSingleObject(procInfo.hProcess, 2000);
+        if (waitResult == Kernel32.WAIT_OBJECT_0)
+        {
+            var exitCode = 0u;
+            Kernel32.GetExitCodeProcess(procInfo.hProcess, out exitCode);
+            errorMessage = $"Elevated process exited immediately with code 0x{exitCode:X}.";
+            return false;
+        }
+
+        return true;
     }
 
     public static bool SwitchToInputDesktop()
