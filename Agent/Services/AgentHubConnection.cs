@@ -45,6 +45,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
     private readonly IUninstaller _uninstaller;
     private readonly IUpdater _updater;
     private readonly IWakeOnLanService _wakeOnLanService;
+    private readonly SemaphoreSlim _connectThrottle = new(1, 1);
     private ConnectionInfo? _connectionInfo;
     private Timer? _heartbeatTimer;
     private HubConnection? _hubConnection;
@@ -104,16 +105,35 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
 
     public async Task Connect()
     {
-        using var throttle = new SemaphoreSlim(1, 1);
+        if (!await _connectThrottle.WaitAsync(0))
+        {
+            _logger.LogDebug("Connection already in progress.  Skipping.");
+            return;
+        }
 
+        try
+        {
+            await ConnectInternal();
+        }
+        finally
+        {
+            _connectThrottle.Release();
+        }
+    }
+
+    private async Task ConnectInternal()
+    {
         for (var i = 1; true; i++)
         {
             try
             {
-                var waitSeconds = Math.Min(60, Math.Pow(i, 2));
-                // This will allow the first attempt to go through immediately, but
-                // subsequent attempts will have an exponential delay.
-                _ = await throttle.WaitAsync(TimeSpan.FromSeconds(waitSeconds));
+                if (i > 1)
+                {
+                    // The first attempt goes through immediately, but
+                    // subsequent attempts have an exponential delay.
+                    var waitSeconds = Math.Min(60, Math.Pow(i, 2));
+                    await Task.Delay(TimeSpan.FromSeconds(waitSeconds));
+                }
 
                 _logger.LogInformation("Attempting to connect to server.");
 
@@ -145,6 +165,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
                 RegisterMessageHandlers();
 
                 _hubConnection.Reconnected += HubConnection_Reconnected;
+                _hubConnection.Closed += HubConnection_Closed;
 
                 await _hubConnection.StartAsync();
 
@@ -207,6 +228,7 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
     {
         GC.SuppressFinalize(this);
         _heartbeatTimer?.Dispose();
+        _connectThrottle.Dispose();
     }
 
     public async Task ExecuteCommand(ScriptingShell shell, string command, string authToken, string senderUsername, string senderConnectionId)
@@ -451,6 +473,12 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
                 return;
             }
 
+            if (_hubConnection.State != HubConnectionState.Connected)
+            {
+                _logger.LogDebug("Hub connection is not active. Skipping heartbeat.");
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(_connectionInfo.OrganizationID))
             {
                 _logger.LogError("Organization ID is not set.  Please set it in the config file.");
@@ -572,6 +600,14 @@ public class AgentHubConnection : IAgentHubConnection, IDisposable
     private async void HeartbeatTimer_Elapsed(object? sender, ElapsedEventArgs e)
     {
         await SendHeartbeat();
+    }
+
+    private Task HubConnection_Closed(Exception? exception)
+    {
+        // Automatically reconnect when connection is lost
+        _logger.LogWarning(exception, "Hub connection closed.  Reconnecting.");
+        _ = Connect();
+        return Task.CompletedTask;
     }
 
     private async Task HubConnection_Reconnected(string? arg)
