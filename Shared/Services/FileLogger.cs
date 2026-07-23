@@ -3,12 +3,16 @@
 using Microsoft.Extensions.Logging;
 using Remotely.Shared.Utilities;
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 
 namespace Remotely.Shared.Services;
 
 public class FileLogger : ILogger
 {
     private static readonly ConcurrentStack<string> _scopeStack = new();
+    private static bool _logsAclEnsured;
     private readonly string _categoryName;
     private readonly string _componentName;
     private readonly string _componentVersion;
@@ -62,10 +66,44 @@ public class FileLogger : ILogger
 
     private void CheckLogFileExists()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+        var directory = Path.GetDirectoryName(LogPath)!;
+        Directory.CreateDirectory(directory);
+
+        // Elevated sessions run in under Windows accounts than the process that created the log file.
+        // Grant the Modify permission to the log file so we can write to it.
+        if (OperatingSystem.IsWindows() && !_logsAclEnsured)
+        {
+            _logsAclEnsured = true;
+            TryGrantUsersModifyAccess(directory);
+        }
+
         if (!File.Exists(LogPath))
         {
             File.Create(LogPath).Close();
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void TryGrantUsersModifyAccess(string directory)
+    {
+        try
+        {
+            var usersSid = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+            var dirInfo = new DirectoryInfo(directory);
+            var security = dirInfo.GetAccessControl();
+            security.AddAccessRule(new FileSystemAccessRule(
+                usersSid,
+                FileSystemRights.Modify,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+            dirInfo.SetAccessControl(security);
+        }
+        catch (Exception ex)
+        {
+            // Only the directory owner can change the ACL; the elevated (non-owner) process
+            // will land here, which is fine — the owning process performs the grant.
+            Console.WriteLine($"Failed to set logs directory ACL: {ex.Message}");
         }
     }
     private void CleanupLogs()
