@@ -24,10 +24,14 @@ public class ShutdownServiceLinux : IShutdownService
         _logger = logger;
     }
 
-    public async Task Shutdown()
+    public async Task Shutdown(bool disconnectViewers = true)
     {
         _logger.LogDebug("Exiting process ID {processId}.", Environment.ProcessId);
-        await TryDisconnectViewers();
+        if (disconnectViewers)
+        {
+            await TryDisconnectViewers();
+        }
+
         _dispatcher.Shutdown();
     }
 

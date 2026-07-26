@@ -470,7 +470,14 @@ public class DesktopHubConnection : IDesktopHubConnection, IDesktopHubClient
             var builder = _serviceProvider.GetRequiredService<IHubConnectionBuilder>();
 
             var connection = builder
-                .WithUrl($"{_appState.Host.Trim().TrimEnd('/')}/hubs/desktop")
+                .WithUrl($"{_appState.Host.Trim().TrimEnd('/')}/hubs/desktop", options =>
+                {
+                    // TEMPORARY: Bypasses SSL certificate validation for local debugging. Debug-only; never compiled into Release.
+                    options.HttpMessageHandlerFactory = _ => new HttpClientHandler
+                    {
+                        ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                    };
+                })
                 .AddMessagePackProtocol()
                 .WithAutomaticReconnect(new RetryPolicy())
                 .Build();

@@ -198,7 +198,11 @@ internal class AppStartup : IAppStartup
                     procInfo.dwProcessId);
 
                 await _desktopHub.NotifyElevationRelaunch();
-                await _shutdownService.Shutdown();
+
+                // Hand the viewers off to the relaunched (elevated) process. We must NOT
+                // disconnect them here, or they'd be told the session ended and the
+                // automatic reconnect to the new session would never happen.
+                await _shutdownService.Shutdown(disconnectViewers: false);
             }
             else
             {

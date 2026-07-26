@@ -25,7 +25,7 @@ public class ShutdownServiceWin : IShutdownService
         _logger = logger;
     }
 
-    public async Task Shutdown()
+    public async Task Shutdown(bool disconnectViewers = true)
     {
         using var _ = _logger.Enter(LogLevel.Information);
 
@@ -43,8 +43,15 @@ public class ShutdownServiceWin : IShutdownService
 
             _logger.LogInformation("Starting process shutdown.");
 
-            _logger.LogInformation("Disconnecting viewers.");
-            await TryDisconnectViewers();
+            if (disconnectViewers)
+            {
+                _logger.LogInformation("Disconnecting viewers.");
+                await TryDisconnectViewers();
+            }
+            else
+            {
+                _logger.LogInformation("Leaving viewers connected for handoff to relaunched process.");
+            }
 
             _logger.LogInformation("Shutting down UI dispatchers.");
             _dispatcher.Shutdown();

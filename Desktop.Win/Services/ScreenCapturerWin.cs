@@ -56,6 +56,7 @@ public class ScreenCapturerWin : IScreenCapturer
     private SKBitmap? _currentFrame;
     private bool _needsInit;
     private SKBitmap? _previousFrame;
+    private DateTimeOffset _lastDesktopSwitchFailureLog = DateTimeOffset.MinValue;
 
     public ScreenCapturerWin(
         IImageHelper imageHelper,
@@ -143,8 +144,22 @@ public class ScreenCapturerWin : IScreenCapturer
                     // desktop has changed to/from WinLogon (err code 170).  I'm guessing a hook
                     // is getting put in the desktop, which causes SetThreadDesktop to fail.
                     // The caller can start a new thread, which seems to resolve it.
+                    //
+                    // This also happens for a sustained period during a desktop transition the
+                    // current process can't attach to (the secure/UAC desktop, the lock screen,
+                    // or a Winlogon switch). The capture loop retries this call with no delay, so
+                    // without a backoff here it busy-spins and floods the log with thousands of
+                    // identical lines until the transition ends.  Sleep briefly and throttle the
+                    // logging so the failure degrades gracefully instead.
                     var errCode = Marshal.GetLastWin32Error();
-                    _logger.LogError("Failed to switch to input desktop. Last Win32 error code: {errCode}", errCode);
+
+                    if (DateTimeOffset.Now - _lastDesktopSwitchFailureLog > TimeSpan.FromSeconds(5))
+                    {
+                        _lastDesktopSwitchFailureLog = DateTimeOffset.Now;
+                        _logger.LogError("Failed to switch to input desktop. Last Win32 error code: {errCode}", errCode);
+                    }
+
+                    Thread.Sleep(100);
                     return Result.Fail<SKBitmap>($"Failed to switch to input desktop. Last Win32 error code: {errCode}");
                 }
 

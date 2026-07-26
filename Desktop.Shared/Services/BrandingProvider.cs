@@ -113,8 +113,14 @@ public class BrandingProvider : IBrandingProvider
             {
                 return Result.Fail<BrandingInfo>("ServerUrl is empty.");
             }
+            
+            // TEMPORARY: Bypasses SSL certificate validation for local debugging. Debug-only; never compiled into Release.
+            using var httpClientHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
+            using var httpClient = new HttpClient(httpClientHandler);
 
-            using var httpClient = new HttpClient();
 
             var brandingUrl = $"{_appState.Host.TrimEnd('/')}/api/branding/{_appState.OrganizationId}";
             var httpResult = await httpClient.GetFromJsonAsync<BrandingInfo>(brandingUrl).ConfigureAwait(false);
