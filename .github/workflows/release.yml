@@ -2,6 +2,15 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Build type"
+        required: true
+        type: choice
+        default: stable
+        options:
+          - stable
+          - unstable
 
 jobs:
   build-agents:
@@ -32,6 +41,15 @@ jobs:
           $CurrentVersion = $VersionDate.ToString("yyyy.MM.dd.HHmm")
           echo "VERSION=$CurrentVersion" >> $env:GITHUB_ENV
 
+      - name: Set build type
+        shell: pwsh
+        run: |
+          $BuildType = "${{ inputs.build_type }}"
+          if ([string]::IsNullOrWhiteSpace($BuildType)) {
+            $BuildType = "stable"
+          }
+          echo "BUILD_TYPE=$BuildType" >> $env:GITHUB_ENV
+
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -61,7 +79,7 @@ jobs:
       - name: Upload agent content
         uses: actions/upload-artifact@v4
         with:
-          name: wwwroot-content
+          name: wwwroot-content-${{ env.BUILD_TYPE }}
           path: Server/wwwroot/Content/
           retention-days: 1
 
@@ -91,10 +109,18 @@ jobs:
           VERSION=$(git show -s --format='%cd' --date='format:%Y.%m.%d.%H%M')
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
+      - name: Set build type
+        run: |
+          BUILD_TYPE="${{ inputs.build_type }}"
+          if [ -z "$BUILD_TYPE" ]; then
+            BUILD_TYPE="stable"
+          fi
+          echo "BUILD_TYPE=$BUILD_TYPE" >> "$GITHUB_ENV"
+
       - name: Download agent content
         uses: actions/download-artifact@v4
         with:
-          name: wwwroot-content
+          name: wwwroot-content-${{ env.BUILD_TYPE }}
           path: Server/wwwroot/Content/
 
       - name: Set up .NET 8
@@ -140,12 +166,24 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set image tags
+        run: |
+          if [ "${{ env.BUILD_TYPE }}" = "unstable" ]; then
+            echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+            echo "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ env.VERSION }}-unstable" >> "$GITHUB_ENV"
+            echo "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:unstable" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_TAGS<<EOF" >> "$GITHUB_ENV"
+            echo "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ env.VERSION }}" >> "$GITHUB_ENV"
+            echo "${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest" >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
+          fi
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Server/Dockerfile
           push: true
-          tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:${{ env.VERSION }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
+          tags: ${{ env.IMAGE_TAGS }}
