@@ -13,6 +13,14 @@ public static class Kernel32
     [DllImport("kernel32.dll")]
     public static extern nint GetConsoleWindow();
 
+    // Attaches the (WinExe) process to the console of its parent process so Console I/O works when
+    // launched from a terminal. Pass ATTACH_PARENT_PROCESS (-1).
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AttachConsole(uint dwProcessId);
+
+    public const uint ATTACH_PARENT_PROCESS = 0xFFFFFFFF;
+
     [return: MarshalAs(UnmanagedType.Bool)]
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     public static extern bool GlobalMemoryStatusEx([In, Out] MEMORYSTATUSEX lpBuffer);

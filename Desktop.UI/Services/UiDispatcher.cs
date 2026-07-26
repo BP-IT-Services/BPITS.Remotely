@@ -180,8 +180,16 @@ internal class UiDispatcher : IUiDispatcher
     public void Shutdown()
     {
         _appCts.Cancel();
-        if (CurrentApp?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime &&
-            lifetime.TryShutdown())
+
+        // TryShutdown drives Avalonia window/lifetime teardown and MUST run on the UI thread.
+        // Shutdown() is frequently called from a background thread (e.g. the SignalR elevation
+        // callback), so marshal onto the UI thread rather than calling it directly - otherwise it
+        // throws "Call from invalid thread" and the caller's catch force-exits the process.
+        var shutdownRequested = Dispatcher.UIThread.Invoke(() =>
+            CurrentApp?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime lifetime &&
+            lifetime.TryShutdown());
+
+        if (shutdownRequested)
         {
             return;
         }
