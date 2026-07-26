@@ -21,6 +21,9 @@ public static class Kernel32
     public static extern nint OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
 
     [DllImport("kernel32.dll")]
+    public static extern nint GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
     public static extern bool ProcessIdToSessionId(uint dwProcessId, ref uint pSessionId);
 
     [DllImport("kernel32.dll")]

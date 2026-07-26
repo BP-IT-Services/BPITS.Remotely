@@ -180,40 +180,76 @@ internal class AppStartup : IAppStartup
                 $" --access-key \"{newAccessKey}\"" +
                 $" --viewers {string.Join(",", viewerIds)}";
 
-            _logger.LogInformation("Attempting elevated relaunch. New session ID: {sessionId}.", newSessionId);
+            _logger.LogInformation("Attempting high-integrity elevated relaunch. New session ID: {sessionId}.", newSessionId);
 
-            var success = Win32Interop.RelaunchElevated(
+            // The child process relaunched here is stage B of the elevation chain: it runs at
+            // high integrity as the AD admin and, via --elevate, immediately attempts to hop to
+            // a SYSTEM-owned stage C process capable of driving the UAC secure desktop.
+            var highIntegritySuccess = Win32Interop.RelaunchElevatedHighIntegrity(
                 e.Username,
                 e.Domain,
                 e.Password,
-                commandLineArgs,
+                commandLineArgs + " --elevate",
                 out var procInfo,
-                out var elevationError,
-                out var win32ErrorCode);
+                out var highIntegrityError,
+                out var highIntegrityWin32ErrorCode,
+                out var highIntegrityDiagnostics);
 
-            if (success)
+            var isHighIntegrity = highIntegritySuccess;
+
+            _logger.LogInformation("High-integrity elevation ladder diagnostics: {diagnostics}", highIntegrityDiagnostics);
+
+            if (!highIntegritySuccess)
             {
-                _logger.LogInformation(
-                    "Elevated relaunch succeeded. New process ID: {processId}. Notifying server before shutdown.",
-                    procInfo.dwProcessId);
+                _logger.LogWarning(
+                    "High-integrity elevated relaunch failed (Win32 error {win32ErrorCode}: {error}). Falling back to medium-integrity relaunch.",
+                    highIntegrityWin32ErrorCode,
+                    highIntegrityError);
 
-                await _desktopHub.NotifyElevationRelaunch();
+                highIntegritySuccess = Win32Interop.RelaunchElevated(
+                    e.Username,
+                    e.Domain,
+                    e.Password,
+                    commandLineArgs,
+                    out procInfo,
+                    out var elevationError,
+                    out var win32ErrorCode);
 
-                // Hand the viewers off to the relaunched (elevated) process. We must NOT
-                // disconnect them here, or they'd be told the session ended and the
-                // automatic reconnect to the new session would never happen.
-                await _shutdownService.Shutdown(disconnectViewers: false);
-            }
-            else
-            {
-                var message = GetElevationFailureMessage(win32ErrorCode, elevationError);
-                _logger.LogWarning("Elevated relaunch failed: {message}", message);
-
-                foreach (var viewer in _appState.Viewers.Values)
+                if (!highIntegritySuccess)
                 {
-                    await _desktopHub.SendMessageToViewer(viewer.ViewerConnectionId, message);
+                    var message = GetElevationFailureMessage(win32ErrorCode, elevationError);
+                    _logger.LogWarning("Elevated relaunch failed: {message}", message);
+
+                    foreach (var viewer in _appState.Viewers.Values)
+                    {
+                        await _desktopHub.SendMessageToViewer(viewer.ViewerConnectionId, message);
+                    }
+
+                    return;
                 }
             }
+
+            _logger.LogInformation(
+                "Elevated relaunch succeeded ({integrity} integrity). New process ID: {processId}. Notifying server before shutdown.",
+                isHighIntegrity ? "high" : "medium",
+                procInfo.dwProcessId);
+
+            if (!isHighIntegrity)
+            {
+                foreach (var viewer in _appState.Viewers.Values)
+                {
+                    await _desktopHub.SendMessageToViewer(
+                        viewer.ViewerConnectionId,
+                        "Elevated, but Windows prevented full UAC-interaction rights.");
+                }
+            }
+
+            await _desktopHub.NotifyElevationRelaunch();
+
+            // Hand the viewers off to the relaunched (elevated) process. We must NOT
+            // disconnect them here, or they'd be told the session ended and the
+            // automatic reconnect to the new session would never happen.
+            await _shutdownService.Shutdown(disconnectViewers: false);
         }
         catch (Exception ex)
         {

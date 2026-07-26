@@ -6,6 +6,8 @@ using Microsoft.Extensions.Logging;
 using Remotely.Shared.Primitives;
 using System.CommandLine;
 using System.CommandLine.NamingConventionBinder;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Remotely.Desktop.Native.Windows;
 
@@ -39,8 +41,14 @@ public static class IServiceProviderExtensions
 
             if (OperatingSystem.IsWindows() && elevate)
             {
-                RelaunchElevated();
-                return Result.Ok();
+                if (RelaunchElevated(logger))
+                {
+                    return Result.Ok();
+                }
+
+                // The SYSTEM hop failed; fall through and run the client normally. This
+                // process is already high-integrity, so the operator still gets a correctly
+                // elevated (if not SYSTEM-capable) session instead of a hard failure.
             }
 
             var appState = services.GetRequiredService<IAppState>();
@@ -144,18 +152,35 @@ public static class IServiceProviderExtensions
         logger.LogError(e.Exception, "An unobserved task exception occurred.");
     }
 
+    /// <summary>
+    /// Stage B of the elevation chain: running as a high-integrity admin, steal winlogon's
+    /// SYSTEM token and relaunch as stage C. Returns false (rather than exiting) if the SYSTEM
+    /// hop fails, so the caller can fall back to running this already-elevated process directly.
+    /// </summary>
     [SupportedOSPlatform("windows")]
-    private static void RelaunchElevated()
+    private static bool RelaunchElevated(ILogger logger)
     {
-        var commandLine = Win32Interop.GetCommandLine().Replace(" --elevate", "");
+        if (!Win32Interop.EnablePrivilege("SeDebugPrivilege"))
+        {
+            logger.LogWarning("Failed to enable SeDebugPrivilege; SYSTEM relaunch may fail to open winlogon.");
+        }
 
-        Console.WriteLine($"Elevating process {commandLine}.");
-        var result = Win32Interop.CreateInteractiveSystemProcess(
-            commandLine,
-            -1,
-            false,
-            out var procInfo);
-        Console.WriteLine($"Elevate result: {result}. Process ID: {procInfo.dwProcessId}.");
-        Environment.Exit(0);
+        var commandLine = Win32Interop.GetCommandLine().Replace(" --elevate", "");
+        var sessionId = Process.GetCurrentProcess().SessionId;
+
+        logger.LogInformation("Attempting SYSTEM relaunch in session {sessionId}: {commandLine}", sessionId, commandLine);
+
+        if (!Win32Interop.CreateInteractiveSystemProcess(commandLine, sessionId, false, out var procInfo))
+        {
+            var win32Error = Marshal.GetLastWin32Error();
+            logger.LogWarning(
+                "SYSTEM relaunch failed. Win32 error {win32Error}: {message}",
+                win32Error,
+                new System.ComponentModel.Win32Exception(win32Error).Message);
+            return false;
+        }
+
+        logger.LogInformation("SYSTEM relaunch succeeded. Process ID: {processId}.", procInfo.dwProcessId);
+        return true;
     }
 }

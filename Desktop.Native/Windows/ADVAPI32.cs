@@ -44,6 +44,16 @@ public static class ADVAPI32
         public int dwProcessId;
         public int dwThreadId;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TOKEN_LINKED_TOKEN
+    {
+        public nint LinkedToken;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TOKEN_ELEVATION
+    {
+        public int TokenIsElevated;
+    }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct STARTUPINFO
     {
@@ -271,6 +281,8 @@ public static class ADVAPI32
 
     #region Constants
     public const int TOKEN_DUPLICATE = 0x0002;
+    public const int TOKEN_QUERY = 0x0008;
+    public const int TOKEN_ADJUST_PRIVILEGES = 0x0020;
     public const uint MAXIMUM_ALLOWED = 0x2000000;
     public const int CREATE_NEW_CONSOLE = 0x00000010;
     public const int CREATE_NO_WINDOW = 0x08000000;
@@ -337,15 +349,24 @@ public static class ADVAPI32
         uint TokenInformationLength,
         out uint ReturnLength);
 
-    [DllImport("advapi32.dll", SetLastError = true, BestFitMapping = false, ThrowOnUnmappableChar = true)]
+    // Unicode (LogonUserW) is required rather than the ANSI entry point so that non-ASCII
+    // AD passwords authenticate instead of throwing during marshalling.
+    [DllImport("advapi32.dll", EntryPoint = "LogonUserW", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool LogonUser(
-        [MarshalAs(UnmanagedType.LPStr)] string pszUserName,
-        [MarshalAs(UnmanagedType.LPStr)] string pszDomain,
-        [MarshalAs(UnmanagedType.LPStr)] string pszPassword,
+        string pszUserName,
+        string pszDomain,
+        string pszPassword,
         int dwLogonType,
         int dwLogonProvider,
         out nint phToken);
+
+    [DllImport("advapi32.dll", EntryPoint = "LookupPrivilegeValueW", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool LookupPrivilegeValue(
+        string? lpSystemName,
+        string lpName,
+        out TOKEN_PRIVILEGES.LUID lpLuid);
 
     [DllImport("advapi32", SetLastError = true), SuppressUnmanagedCodeSecurity]
     public static extern bool OpenProcessToken(nint ProcessHandle, int DesiredAccess, ref nint TokenHandle);
@@ -376,5 +397,25 @@ public static class ADVAPI32
         out PROCESS_INFORMATION lpProcessInformation);
 
     public const uint LOGON_WITH_PROFILE = 1;
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool CreateProcessWithTokenW(
+        nint hToken,
+        uint dwLogonFlags,
+        string? lpApplicationName,
+        string lpCommandLine,
+        uint dwCreationFlags,
+        nint lpEnvironment,
+        string? lpCurrentDirectory,
+        ref STARTUPINFO lpStartupInfo,
+        out PROCESS_INFORMATION lpProcessInformation);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ImpersonateLoggedOnUser(nint hToken);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool RevertToSelf();
     #endregion
 }

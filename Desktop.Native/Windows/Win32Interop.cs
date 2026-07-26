@@ -315,6 +315,349 @@ public class Win32Interop
         return true;
     }
 
+    /// <summary>
+    /// Relaunches the process as a high-integrity process running as the given admin user.
+    /// UAC token filtering is applied to *interactive* logons, so a LOGON32_LOGON_BATCH (or
+    /// NETWORK_CLEARTEXT) logon of a domain account returns the full, unfiltered, already-elevated
+    /// primary token directly - no linked token, no SeTcbPrivilege required. This ladder tries
+    /// those first, verifying elevation on every candidate, and only falls back to the
+    /// interactive-logon + linked-token dance (which requires SeTcbPrivilege to yield a usable
+    /// token and so mostly exists for local admin accounts on machines where it happens to work).
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static bool RelaunchElevatedHighIntegrity(
+        string username,
+        string domain,
+        string password,
+        string commandLineArgs,
+        out PROCESS_INFORMATION procInfo,
+        out string errorMessage,
+        out int win32ErrorCode,
+        out string diagnosticLog)
+    {
+        procInfo = new PROCESS_INFORMATION();
+        errorMessage = string.Empty;
+        win32ErrorCode = 0;
+
+        var attempts = new List<string>();
+        var ladder = new[]
+        {
+            LOGON_TYPE.LOGON32_LOGON_BATCH,
+            LOGON_TYPE.LOGON32_LOGON_NETWORK_CLEARTEXT,
+            LOGON_TYPE.LOGON32_LOGON_INTERACTIVE,
+        };
+
+        foreach (var logonType in ladder)
+        {
+            var token = nint.Zero;
+            try
+            {
+                if (!LogonUser(username, domain, password, (int)logonType, (int)LOGON_PROVIDER.LOGON32_PROVIDER_DEFAULT, out token))
+                {
+                    win32ErrorCode = Marshal.GetLastWin32Error();
+                    attempts.Add($"{logonType}: LogonUser failed (Win32 {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message})");
+                    continue;
+                }
+
+                bool launched;
+                string launchError;
+                int launchCode;
+
+                if (logonType == LOGON_TYPE.LOGON32_LOGON_INTERACTIVE)
+                {
+                    launched = TryElevateFromLinkedToken(username, domain, token, commandLineArgs, out procInfo, out launchError, out launchCode);
+                }
+                else
+                {
+                    // Batch/network-cleartext logons of a domain account are NOT UAC-filtered,
+                    // but verify anyway - this check is what catches a local (non-domain) account
+                    // silently coming back filtered instead of failing outright.
+                    if (!IsTokenElevated(token, out var elevationDetail))
+                    {
+                        attempts.Add($"{logonType}: token not elevated ({elevationDetail})");
+                        continue;
+                    }
+
+                    launched = LaunchWithElevatedToken(token, SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation, username, domain, commandLineArgs, out procInfo, out launchError, out launchCode);
+                }
+
+                if (launched)
+                {
+                    diagnosticLog = $"Elevation succeeded via {logonType}." +
+                        (attempts.Count > 0 ? $" Earlier rungs failed: {string.Join(" | ", attempts)}" : string.Empty);
+                    errorMessage = string.Empty;
+                    win32ErrorCode = 0;
+                    return true;
+                }
+
+                win32ErrorCode = launchCode;
+                attempts.Add($"{logonType}: {launchError}");
+            }
+            finally
+            {
+                if (token != nint.Zero) Kernel32.CloseHandle(token);
+            }
+        }
+
+        diagnosticLog = string.Join(" | ", attempts);
+        errorMessage = attempts.Count == 0 ? "No elevation ladder rungs were attempted." : attempts[^1];
+        return false;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryElevateFromLinkedToken(
+        string username,
+        string domain,
+        nint filteredToken,
+        string commandLineArgs,
+        out PROCESS_INFORMATION procInfo,
+        out string errorMessage,
+        out int win32ErrorCode)
+    {
+        procInfo = new PROCESS_INFORMATION();
+        errorMessage = string.Empty;
+        win32ErrorCode = 0;
+
+        var elevatedToken = nint.Zero;
+        var linkedTokenSize = Marshal.SizeOf<TOKEN_LINKED_TOKEN>();
+        var linkedTokenBuf = Marshal.AllocHGlobal(linkedTokenSize);
+        try
+        {
+            if (!GetTokenInformation(filteredToken, SECUR32.TOKEN_INFORMATION_CLASS.TokenLinkedToken, linkedTokenBuf, (uint)linkedTokenSize, out _))
+            {
+                win32ErrorCode = Marshal.GetLastWin32Error();
+                errorMessage = $"GetTokenInformation(TokenLinkedToken) failed. Win32 error {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message}";
+                return false;
+            }
+
+            var linkedToken = Marshal.PtrToStructure<TOKEN_LINKED_TOKEN>(linkedTokenBuf);
+            elevatedToken = linkedToken.LinkedToken;
+
+            if (!IsTokenElevated(elevatedToken, out var elevationDetail))
+            {
+                errorMessage = $"Linked token is not elevated ({elevationDetail}).";
+                return false;
+            }
+
+            // Duplicate at the linked token's actual impersonation level, rather than assuming
+            // SecurityImpersonation, so a caller without SeTcbPrivilege (who only gets an
+            // identification-level linked token) fails cleanly here instead of with the
+            // misleading ERROR_BAD_IMPERSONATION_LEVEL (1346) from DuplicateTokenEx.
+            var actualLevel = GetImpersonationLevel(elevatedToken, SECURITY_IMPERSONATION_LEVEL.SecurityIdentification);
+            if (actualLevel < SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation)
+            {
+                errorMessage = $"Linked token impersonation level is only {actualLevel}; cannot create a process from it.";
+                return false;
+            }
+
+            return LaunchWithElevatedToken(elevatedToken, actualLevel, username, domain, commandLineArgs, out procInfo, out errorMessage, out win32ErrorCode);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(linkedTokenBuf);
+            if (elevatedToken != nint.Zero) Kernel32.CloseHandle(elevatedToken);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool LaunchWithElevatedToken(
+        nint elevatedToken,
+        SECURITY_IMPERSONATION_LEVEL duplicateLevel,
+        string username,
+        string domain,
+        string commandLineArgs,
+        out PROCESS_INFORMATION procInfo,
+        out string errorMessage,
+        out int win32ErrorCode)
+    {
+        procInfo = new PROCESS_INFORMATION();
+        errorMessage = string.Empty;
+        win32ErrorCode = 0;
+
+        var primaryToken = nint.Zero;
+        var impersonating = false;
+
+        try
+        {
+            var sa = new SECURITY_ATTRIBUTES();
+            sa.Length = Marshal.SizeOf(sa);
+
+            if (!DuplicateTokenEx(elevatedToken, MAXIMUM_ALLOWED, ref sa, duplicateLevel, TOKEN_TYPE.TokenPrimary, out primaryToken))
+            {
+                win32ErrorCode = Marshal.GetLastWin32Error();
+                errorMessage = $"DuplicateTokenEx failed. Win32 error {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message}";
+                return false;
+            }
+
+            // Impersonating the elevated token on this thread is what grants the calling
+            // process the SeImpersonatePrivilege usage that CreateProcessWithTokenW requires -
+            // this is what makes the sequence work when launched from a standard-user process.
+            if (!ImpersonateLoggedOnUser(elevatedToken))
+            {
+                win32ErrorCode = Marshal.GetLastWin32Error();
+                errorMessage = $"ImpersonateLoggedOnUser failed. Win32 error {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message}";
+                return false;
+            }
+            impersonating = true;
+
+            GrantWindowStationAndDesktopAccess(username, domain);
+
+            var exePath = Environment.ProcessPath ?? Environment.GetCommandLineArgs()[0];
+            var commandLine = $"\"{exePath}\" {commandLineArgs}";
+
+            var si = new STARTUPINFO();
+            si.cb = Marshal.SizeOf(si);
+            // Leave lpDesktop null so the child inherits the caller's desktop; the ACL grant
+            // above ensures the new session token is allowed to connect to it.
+
+            var result = CreateProcessWithTokenW(
+                primaryToken,
+                LOGON_WITH_PROFILE,
+                null,
+                commandLine,
+                NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT,
+                nint.Zero,
+                null,
+                ref si,
+                out procInfo);
+
+            if (!result)
+            {
+                win32ErrorCode = Marshal.GetLastWin32Error();
+                errorMessage = $"CreateProcessWithTokenW failed. Win32 error {win32ErrorCode}: {new System.ComponentModel.Win32Exception(win32ErrorCode).Message}";
+                return false;
+            }
+
+            // CreateProcessWithTokenW returning true only means the process was created; it can
+            // still die immediately. Give it a moment and confirm it's still alive before the
+            // caller shuts itself down.
+            var waitResult = Kernel32.WaitForSingleObject(procInfo.hProcess, 2000);
+            if (waitResult == Kernel32.WAIT_OBJECT_0)
+            {
+                var exitCode = 0u;
+                Kernel32.GetExitCodeProcess(procInfo.hProcess, out exitCode);
+                errorMessage = $"Elevated process exited immediately with code 0x{exitCode:X}.";
+                return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            if (impersonating)
+            {
+                RevertToSelf();
+            }
+
+            if (primaryToken != nint.Zero) Kernel32.CloseHandle(primaryToken);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool IsTokenElevated(nint token, out string detail)
+    {
+        detail = string.Empty;
+        var size = Marshal.SizeOf<TOKEN_ELEVATION>();
+        var buf = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (!GetTokenInformation(token, SECUR32.TOKEN_INFORMATION_CLASS.TokenElevation, buf, (uint)size, out _))
+            {
+                var code = Marshal.GetLastWin32Error();
+                detail = $"GetTokenInformation(TokenElevation) failed, Win32 error {code}: {new System.ComponentModel.Win32Exception(code).Message}";
+                return false;
+            }
+
+            var elevation = Marshal.PtrToStructure<TOKEN_ELEVATION>(buf);
+            if (elevation.TokenIsElevated == 0)
+            {
+                detail = "TokenIsElevated = 0";
+                return false;
+            }
+
+            return true;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static SECURITY_IMPERSONATION_LEVEL GetImpersonationLevel(nint token, SECURITY_IMPERSONATION_LEVEL fallback)
+    {
+        var size = sizeof(int);
+        var buf = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (!GetTokenInformation(token, SECUR32.TOKEN_INFORMATION_CLASS.TokenImpersonationLevel, buf, (uint)size, out _))
+            {
+                return fallback;
+            }
+
+            return (SECURITY_IMPERSONATION_LEVEL)Marshal.ReadInt32(buf);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    /// <summary>
+    /// Enables the named privilege (e.g. SeDebugPrivilege) in the current process's token.
+    /// Privileges like SeDebugPrivilege are present-but-disabled by default even in an elevated
+    /// admin token, and must be explicitly enabled before use.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    public static bool EnablePrivilege(string privilegeName)
+    {
+        var hToken = nint.Zero;
+        try
+        {
+            var hProcess = Kernel32.GetCurrentProcess();
+            if (!OpenProcessToken(hProcess, TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, ref hToken))
+            {
+                return false;
+            }
+
+            if (!LookupPrivilegeValue(null, privilegeName, out var luid))
+            {
+                return false;
+            }
+
+            var tp = new TOKEN_PRIVILEGES
+            {
+                PrivilegeCount = 1,
+                Privileges = new[]
+                {
+                    new TOKEN_PRIVILEGES.LUID_AND_ATTRIBUTES
+                    {
+                        Luid = luid,
+                        Attributes = SE_PRIVILEGE_ENABLED
+                    }
+                }
+            };
+            var prevState = new TOKEN_PRIVILEGES
+            {
+                PrivilegeCount = 1,
+                Privileges = new TOKEN_PRIVILEGES.LUID_AND_ATTRIBUTES[1]
+            };
+
+            if (!AdjustTokenPrivileges(hToken, false, ref tp, (uint)Marshal.SizeOf<TOKEN_PRIVILEGES>(), ref prevState, out _))
+            {
+                return false;
+            }
+
+            // AdjustTokenPrivileges can return true while silently not assigning the privilege
+            // (e.g. ERROR_NOT_ALL_ASSIGNED); that only surfaces via GetLastError, not the return value.
+            return Marshal.GetLastWin32Error() == 0;
+        }
+        finally
+        {
+            if (hToken != nint.Zero) Kernel32.CloseHandle(hToken);
+        }
+    }
+
     public static bool SwitchToInputDesktop()
     {
         try
